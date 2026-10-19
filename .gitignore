@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Generated run outputs
+workspace/
+
+# Project / client data (kept local, not published)
+Project 1 Packages/
+Project 2 Packages/
+*.rar
+Macros equations/
+Unifier Vendor List.xlsx
+Vendors Workpackages.xlsx
+Copy of Codes*.xlsx
+masterformat-2016.pdf
+
+# Office lock files
+~$*

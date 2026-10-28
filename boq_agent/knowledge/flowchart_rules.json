@@ -4,7 +4,8 @@
   "notes": [
     "Rectangles in the flowchart = normal packaging: either 'as_is' (package exactly as written in the BOQ) or 'split' into the listed work packages.",
     "Ovals/circles = special cases (exceptions). They are expressed in 'special_rules' and always need user approval before they are applied.",
-    "Edit this file to change packaging behaviour; the agent's system prompt is generated from it."
+    "Edit this file to change packaging behaviour; the agent's system prompt is generated from it.",
+    "Division options: 'only_specials' / 'exclude_specials' limit which ovals can apply inside that division; 'groups' + a category's 'group' give the parent boxes (Hardscape / Softscape); 'misc' names the package for items of a split division that match no listed package."
   ],
 
   "divisions": {
@@ -39,8 +40,14 @@
     "27": {"name_en": "Communications", "name_ar": "أعمال الاتصالات", "mode": "as_is", "keywords": ["اتصالات", "تيار خفيف", "communications", "data", "telephone"]},
     "28": {"name_en": "Electronic Safety & Security", "name_ar": "أنظمة الأمن والإنذار", "mode": "as_is", "keywords": ["انذار", "كاميرات", "مراقبه", "fire alarm", "cctv", "security"]},
     "31": {"name_en": "Earthwork", "name_ar": "أعمال الحفر والردم", "mode": "as_is",
+           "exclude_specials": ["EARTHWORK"],
            "keywords": ["حفر", "ردم", "الحفر", "الردم", "احلال", "تربه", "earthwork", "earthworks", "excavation", "backfill", "filling"]},
-    "32": {"name_en": "Exterior Improvements", "name_ar": "أعمال الموقع العام", "mode": "as_is", "keywords": ["موقع عام", "الموقع العام", "لاندسكيب", "رصف", "انترلوك", "landscape", "paving", "external works", "site works"]},
+    "32": {"name_en": "Landscape", "name_ar": "أعمال اللاندسكيب", "mode": "split",
+           "groups": {"HARDSCAPE": {"name_en": "Hardscape", "name_ar": "الهاردسكيب"},
+                      "SOFTSCAPE": {"name_en": "Softscape", "name_ar": "السوفتسكيب"}},
+           "misc": {"name_en": "Hardscape", "name_ar": "الهاردسكيب", "definition": "any other landscape / hardscape item (stone or granite paving, kerbs, site furniture such as benches, play equipment, car stoppers, barriers, shades, irrigation …)"},
+           "only_specials": ["EARTHWORK"],
+           "keywords": ["لاندسكيب", "اللاندسكيب", "هاردسكيب", "سوفت سكيب", "تنسيق الموقع", "تنسيق الحدائق", "رصف", "انترلوك", "landscape", "landscaping", "hardscape", "softscape", "paving", "external works", "site works", "exterior improvements"]},
     "33": {"name_en": "Utilities", "name_ar": "المرافق", "mode": "as_is", "keywords": ["مرافق", "utilities", "شبكات"]}
   },
 
@@ -98,6 +105,31 @@
       "definition": "Ceramic or porcelain tiles for floors and/or walls, including skirting (وزر).",
       "keywords": ["سيراميك", "بورسلين", "بورسلان", "وزر", "ceramic", "porcelain", "skirting"]},
 
+    "LS_INTERLOCK": {"division": "32", "group": "HARDSCAPE", "name_en": "Interlock", "name_ar": "الانترلوك",
+      "definition": "Precast concrete interlock paving blocks / pavers of any colour, pattern or thickness, incl. precast concrete stepping stones and landing slabs (وحدات رصف خرسانية سابقة التجهيز).",
+      "keywords": ["انترلوك", "انترلوك", "interlock", "interlocking", "pre-cast concrete paving", "precast concrete paving", "pavers", "stepping stones", "وحدات الرصف الخرسانيه"]},
+    "LS_DAKSHUM": {"division": "32", "group": "HARDSCAPE", "name_en": "Dakshum (Crushed Limestone Base)", "name_ar": "حجر دقشوم",
+      "definition": "Base / sub-base layers of crushed limestone (دقشوم، كسر الحجر الجيري) under paving.",
+      "keywords": ["دقشوم", "الدقشوم", "حجر دقشوم", "كسر الحجاره الجيريه", "crushed limestone", "limestone base", "sub-base", "subbase"]},
+    "LS_CRUSHED_GRAVEL": {"division": "32", "group": "HARDSCAPE", "name_en": "Crushed Gravel", "name_ar": "الزلط / الحصى",
+      "definition": "Crushed or loose gravel / pebbles / aggregate surfacing as a landscape finish (زلط، حصى، Aggregate Surfacing).",
+      "keywords": ["crushed gravel", "loose gravel", "gravel", "pebbles", "aggregate surfacing", "زلط", "الزلط", "حصى", "الحصى"]},
+    "LS_CAST_IN_SITU": {"division": "32", "group": "HARDSCAPE", "name_en": "Cast-in-Place Concrete Paving", "name_ar": "الخرسانة المصبوبة في الموقع",
+      "definition": "Landscape concrete poured on site as a finished surface: cast-in-situ / exposed-aggregate / stamped concrete paving (رصف خرساني مصبوب في الموقع، خرسانة مكشوفة).",
+      "keywords": ["cast in situ", "cast in site", "cast-in-situ", "cast in place", "exposed aggregate", "stamped concrete", "مصبوب في الموقع", "المصبوبه في الموقع", "الرصف الخرساني"]},
+    "LS_FOUNTAINS": {"division": "32", "group": "HARDSCAPE", "name_en": "Fountains", "name_ar": "النوافير",
+      "definition": "Fountains, pools and water features and EVERYTHING built for them: their concrete, waterproofing / membranes, mosaic and stone finishes, copings, nozzles, pumps, lights and equipment (نوافير، حمامات سباحة، water wall). Not their excavation (that is earthwork).",
+      "keywords": ["نافوره", "نوافير", "النوافير", "النافوره", "fountain", "fountains", "water feature", "water wall", "nozzle", "nozzles", "حمامات السباحه", "swimming pool"]},
+    "LS_TARTAN": {"division": "32", "group": "HARDSCAPE", "name_en": "Tartan Sports Flooring", "name_ar": "أرضيات ملاعب الترتان",
+      "definition": "Tartan / rubber (SBR, EPDM) athletic and playground surfacing and their rubber edging (أرضيات ترتان مطاطية، أرضيات الملاعب).",
+      "keywords": ["ترتان", "tartan", "epdm", "sbr", "athletic", "recreational surfacing", "rubber flooring", "ارضيات الملاعب", "ارضيات مطاطيه"]},
+    "LS_MOBILIZATION_FURNITURE": {"division": "32", "group": "SOFTSCAPE", "name_en": "Mobilization Furniture (Caravans / Site Offices)", "name_ar": "أعمال الفرش (الكرفانات والمكاتب المؤقتة)",
+      "definition": "Furniture for site mobilization: caravans, temporary site offices and their furniture and equipment (أعمال الفرش، كرفانات، مكاتب الموقع المؤقتة). NOT benches or play equipment in the landscape.",
+      "keywords": ["كرفان", "كرفانات", "كارافان", "مكاتب مؤقته", "مكتب الموقع", "مكاتب الموقع", "caravan", "caravans", "site office", "temporary office", "porta cabin", "portacabin", "mobilization", "mobilisation"]},
+    "LS_PLANTING": {"division": "32", "group": "SOFTSCAPE", "name_en": "Planting", "name_ar": "أعمال الزراعة",
+      "definition": "Planting works: trees, palms, shrubs, ground covers, grass / turf, seeding, agricultural soil, fertiliser and soil improvement for planting (أعمال الزراعة، أشجار، نخيل، شجيرات، نجيل، تربة زراعية).",
+      "keywords": ["زراعه", "الزراعه", "اشجار", "نخيل", "شجيرات", "نجيل", "حشائش", "تربه زراعيه", "طمي", "سماد", "planting", "plants", "trees", "palms", "shrubs", "groundcover", "ground cover", "turf", "grass", "lawn", "topsoil", "top soil"]},
+
     "EXTERNAL_MARBLE": {"division": "04", "special": true, "name_en": "External Marble / Stone Cladding", "name_ar": "رخام خارجي (تكسيات الواجهات)",
       "definition": "Marble, granite or stone used OUTSIDE the building: facade cladding, external copings, external sills/steps, external wall stone (رخام / جرانيت / حجر للواجهات الخارجية).",
       "keywords": ["رخام", "جرانيت", "حجر", "marble", "granite", "stone"],
@@ -106,6 +138,9 @@
       "definition": "Tiles / pavers laid as the finishing layer of ROOFS and terraces — cement tiles (بلاطات أسمنتية), ceramic/porcelain or terrazzo tiles on the roof (أرضية السطح) incl. their roof skirting — and pitched-roof tiles (قرميد).",
       "keywords": ["بلاط", "قرميد", "tiles", "tile", "pavers", "سيراميك", "ceramic"],
       "requires_any": ["سطح", "اسطح", "الاسطح", "السطح", "roof", "roofs", "terrace", "قرميد"]},
+    "EARTHWORK": {"division": "31", "special": true, "name_en": "Div 31: Earthwork", "name_ar": "أعمال الحفر والردم",
+      "definition": "Earthwork found OUTSIDE the earthwork section: excavation (حفر), backfilling (ردم), soil replacement (إحلال) and compaction (دمك) — for foundations, pits, pump rooms, fountains or landscape. Not concrete, paving or planting that merely includes them.",
+      "keywords": ["حفر", "الحفر", "ردم", "الردم", "احلال", "الاحلال", "تربه احلال", "دمك", "الدمك", "excavation", "excavate", "backfill", "backfilling", "soil replacement", "compaction", "earthwork", "earthworks"]},
     "EXPANSION_JOINTS": {"division": "07", "special": true, "name_en": "Expansion Joints", "name_ar": "فواصل التمدد",
       "definition": "Expansion / movement / settlement / seismic joints and joint covers (فواصل تمدد، فواصل هبوط).",
       "keywords": ["فاصل تمدد", "فواصل تمدد", "فواصل التمدد", "فاصل التمدد", "فواصل الهبوط", "فاصل هبوط", "expansion joint", "movement joint", "seismic joint", "joint cover"]},
@@ -176,6 +211,18 @@
       "message_ar": "سيتم نقل عدد {n} بند لوفر معدني/ألومنيوم من ({sources}) من باب الأبواب والشبابيك وإصدارها كباقة 'لوفرات معدنية' ضمن الأعمال المعدنية (الباب الخامس). ارفض لإبقائها كباقة 'لوفرات' ضمن الباب الثامن."
     },
     {
+      "id": "R7_EARTHWORK",
+      "category": "EARTHWORK",
+      "flowchart": "Div 31 Earthwork oval: excavation, backfilling, soil replacement and compaction found in the structural and/or landscape parts are bundled into the Earthwork work package; if the BOQ has no explicit earthwork package, one is created from them.",
+      "approve": {"type": "merge_into", "target": "DIV31", "only_if_target_exists": true,
+                  "else": {"type": "standalone", "target": "EARTHWORK"}},
+      "deny": {"type": "section_default"},
+      "title_en": "Earthwork → bundled into the Earthwork package",
+      "title_ar": "أعمال الحفر والردم ← تُضم إلى باقة أعمال الحفر والردم",
+      "message_en": "{n} earthwork item(s) (excavation / backfilling / soil replacement / compaction) found in {sources} will be MOVED into the {to_wp} work package (flowchart special case). Deny to keep them inside {from_wp}.",
+      "message_ar": "سيتم نقل عدد {n} بند حفر / ردم / إحلال / دمك من ({sources}) إلى باقة {to_wp} (حالة خاصة في المخطط). ارفض لإبقائها ضمن {from_wp}."
+    },
+    {
       "id": "R6_SPECIALTIES_PER_ITEM",
       "category": null,
       "division": "10",
@@ -188,6 +235,20 @@
       "message_ar": "باب الأعمال الخاصة في ({sources}) يحتوي على {n} بند رئيسي. سيصبح كل بند (مع بنوده الفرعية) باقة عمل مستقلة (حالة خاصة في المخطط). ارفض لإبقاء الباب كباقة واحدة كما هو مكتوب في المقايسة."
     }
   ],
+
+  "landscape_detection": {
+    "note": "A BOQ section is treated as LANDSCAPE (Div 32, split into the Hardscape / Softscape packages) when its title or sheet name says so, or when it uses landscape section codes. 'الموقع العام' on its own is NOT a signal yet (to be decided).",
+    "title_keywords": ["لاندسكيب", "اللاندسكيب", "landscape", "landscaping", "hardscape", "softscape", "هاردسكيب", "سوفت سكيب", "سوفتسكيب", "تنسيق الموقع", "تنسيق الحدائق"],
+    "code_patterns": ["(?:قسم|section|sec\\.?)\\s*0?2\\s?[789]\\d{2}\\b","(?:قسم|section|sec\\.?)\\s*32\\s?\\d\\d\\s?\\d\\d"],
+    "min_code_hits": 2
+  },
+
+  "variants": {
+    "note": "General rule: the same product in different sizes, dimensions, thicknesses, colours, patterns or codes is ONE work package. Items are grouped when they share a parent description, share an item-code family (PC.01 … PC.08), or read the same once sizes, numbers and codes are removed. Every item of a group gets the group's category.",
+    "min_similarity": 0.75,
+    "code_family_re": "\\b([A-Za-z]{2,4})[ .\\-]?\\d{1,3}\\b",
+    "ignore_words": ["لون", "تشكيل", "تشطيب", "مقاس", "سمك", "بسمك", "بمقاس", "colour", "color", "pattern", "finish", "size", "thickness", "type", "code", "كود", "nominal"]
+  },
 
   "context_rules": [
     {
@@ -202,6 +263,15 @@
       "stone_categories": ["INTERNAL_STONE"],
       "stone_words": ["رخام", "جرانيت", "حجر", "marble", "granite", "stone"],
       "max_parent_len": 90
+    },
+    {
+      "id": "C2_FOUNTAIN_ITEMS",
+      "note": "Every landscape item built for a fountain goes to Fountains: its own text or its description names a fountain / water feature (نافورة، نوافير، fountain, water wall, or a water-feature code WF-01 …). Applies inside Landscape only; fountain EXCAVATION stays earthwork (the Earthwork oval).",
+      "scope": "item",
+      "set_category": "LS_FOUNTAINS",
+      "context_all_groups": [
+        ["نافوره", "النافوره", "نوافير", "النوافير", "fountain", "fountains", "water feature", "water features", "water wall", "wf"]
+      ]
     }
   ],
 

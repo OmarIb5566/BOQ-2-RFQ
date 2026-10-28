@@ -22,6 +22,8 @@ class Settings:
     # --- paths ---
     workspace: Path = field(default_factory=lambda: Path(os.getenv("BOQ_WORKSPACE", PROJECT_ROOT / "workspace")))
     rules_path: Path = field(default_factory=lambda: PROJECT_ROOT / "boq_agent" / "knowledge" / "flowchart_rules.json")
+    rfq_template: Path = field(default_factory=lambda: PROJECT_ROOT / "boq_agent" / "rfq" / "templates" / "RFQ Templet.docx")
+    rfq_fields: Path = field(default_factory=lambda: PROJECT_ROOT / "boq_agent" / "rfq" / "fields.json")
 
     # --- OCR for scanned PDFs ---
     tesseract_dir: str = os.getenv("TESSERACT_DIR", r"C:\Program Files\Tesseract-OCR")

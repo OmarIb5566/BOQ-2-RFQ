@@ -12,7 +12,22 @@ RowRole = Literal["header", "section", "heading", "parent", "continuation", "lea
 Decision = Literal["pending", "approved", "denied"]
 
 
+class SourceFile(BaseModel):
+    """One uploaded BOQ file of the project."""
+    id: str                               # "F1", "F2" … ("" = legacy single-file session)
+    filename: str                         # as uploaded (incl. folder inside a zip)
+    source_path: str
+    work_path: str                        # file actually read/rendered (.xls converted to .xlsx …)
+    kind: Literal["excel", "pdf"]
+
+    @property
+    def label(self) -> str:
+        from pathlib import PurePath
+        return PurePath(self.filename).stem
+
+
 class SourceRef(BaseModel):
+    file: str = ""                        # SourceFile.id
     sheet: Optional[str] = None           # Excel sheet name
     row: Optional[int] = None             # Excel 1-based row
     span_to: Optional[int] = None         # Excel: last row covered by vertical merges starting on this row
@@ -51,6 +66,7 @@ class Item(BaseModel):
     method: str = ""                      # llm | llm-review | keyword | section | per_item | manual
     keyword_hint: Optional[str] = None
     reason: str = ""
+    variant_group: Optional[str] = None   # uid of the first item of its size/colour/code variant group
 
     def llm_text(self, max_parent: int = 260, max_desc: int = 320) -> str:
         from .text_utils import truncate
@@ -74,6 +90,7 @@ class Section(BaseModel):
     uid: str
     title: str
     sheet: Optional[str] = None
+    file_id: str = ""                     # SourceFile.id
     title_row_uids: list[str] = Field(default_factory=list)
     subtotal_row_uids: list[str] = Field(default_factory=list)
     item_uids: list[str] = Field(default_factory=list)
@@ -86,6 +103,7 @@ class TableScope(BaseModel):
     """One table area: an Excel sheet, or the whole PDF."""
     name: str
     kind: Literal["excel", "pdf"]
+    file: str = ""                        # SourceFile.id
     header_row_uids: list[str] = Field(default_factory=list)
     header_labels: dict[str, str] = Field(default_factory=dict)   # field -> header text
     field_columns: dict[str, int] = Field(default_factory=dict)   # field -> column index
@@ -107,6 +125,7 @@ class BOQDocument(BaseModel):
     source_path: str
     work_path: str                        # file actually read/rendered (e.g. .xls converted to .xlsx)
     kind: Literal["excel", "pdf"]
+    files: list[SourceFile] = Field(default_factory=list)   # all BOQs of the project (empty in old sessions)
     scopes: list[TableScope] = Field(default_factory=list)
     rows: list[Row] = Field(default_factory=list)
     sections: list[Section] = Field(default_factory=list)
@@ -122,8 +141,20 @@ class BOQDocument(BaseModel):
     def section_map(self) -> dict[str, Section]:
         return {s.uid: s for s in self.sections}
 
-    def scope(self, name: str) -> Optional[TableScope]:
-        return next((s for s in self.scopes if s.name == name), None)
+    def scope(self, name: str, file: str = "") -> Optional[TableScope]:
+        return next((s for s in self.scopes if s.name == name and s.file == file), None)
+
+    def file_list(self) -> list[SourceFile]:
+        """The project's BOQ files (old single-file sessions → one file with id "")."""
+        return self.files or [SourceFile(id="", filename=self.filename, source_path=self.source_path,
+                                         work_path=self.work_path, kind=self.kind)]
+
+    def file_map(self) -> dict[str, SourceFile]:
+        return {f.id: f for f in self.file_list()}
+
+    @property
+    def multi_file(self) -> bool:
+        return len(self.files) > 1
 
 
 class WorkPackage(BaseModel):
@@ -135,6 +166,7 @@ class WorkPackage(BaseModel):
     division_name: str = ""
     item_uids: list[str] = Field(default_factory=list)
     source_sections: list[str] = Field(default_factory=list)
+    source_files: list[str] = Field(default_factory=list)  # SourceFile ids the items come from
     rule_ids: list[str] = Field(default_factory=list)       # special rules that shaped this WP
     notes: list[str] = Field(default_factory=list)
     pdf_file: Optional[str] = None
@@ -174,4 +206,5 @@ class Session(BaseModel):
     plan: Plan = Field(default_factory=Plan)
     output_dir: Optional[str] = None
     zip_file: Optional[str] = None
+    rfq: dict = Field(default_factory=dict)   # last RFQ generation: approved values, files, zip
     log: list[str] = Field(default_factory=list)

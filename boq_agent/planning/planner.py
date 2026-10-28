@@ -23,8 +23,9 @@ class Planner:
                 return it.category
             return f"{MISC}{s.division}"
         if mode == "per_item":
-            # one WP per BOQ *description*: sub-items (AR 21.1, 21.2 …) stay with their parent (AR 21.0)
-            return f"ITEM:{it.parent_row_uids[0] if it.parent_row_uids else it.uid}"
+            # one WP per BOQ *description*: sub-items (AR 21.1, 21.2 …) stay with their parent (AR 21.0),
+            # and sizes / colours / codes of one product stay together (variant group)
+            return f"ITEM:{it.parent_row_uids[0] if it.parent_row_uids else (it.variant_group or it.uid)}"
         return f"DIV{s.division}" if s.division else f"SEC:{s.uid}"
 
     def _resolve(self, spec: dict, it: Item, default: str, present: set[str]) -> Optional[str]:
@@ -32,7 +33,8 @@ class Planner:
         if t == "merge_into":
             target = spec["target"]
             if spec.get("only_if_target_exists") and target not in present:
-                return None
+                # e.g. no explicit earthwork package in this BOQ → create one from these items
+                return self._resolve(spec["else"], it, default, present) if spec.get("else") else None
             return target
         if t == "standalone":
             return spec["target"]
@@ -44,6 +46,7 @@ class Planner:
     def build(self, doc: BOQDocument, previous: Optional[Plan] = None) -> Plan:
         decisions = {p.proposal_id: p.decision for p in (previous.proposals if previous else [])}
         secs = doc.section_map()
+        self._fmap = doc.file_map() if doc.multi_file else {}
         items = [it for s in doc.sections for it in (doc.item_map()[u] for u in s.item_uids)]
         specials = set(self.rules.special_ids)
         plan = Plan()
@@ -81,7 +84,8 @@ class Planner:
             rule = next(r for r in self.rules.special_rules if r["id"] == rule_id)
             pid = f"{rule_id}|{approve}|{deny}"
             decision = decisions.get(pid, "pending")
-            fmt = dict(n=len(its), sources=self._sources(its, secs), from_wp=self.rules.wp_names(deny)[0])
+            fmt = dict(n=len(its), sources=self._sources(its, secs), from_wp=self.rules.wp_names(deny)[0],
+                       to_wp=self.rules.wp_names(approve)[0])
             plan.proposals.append(Proposal(
                 proposal_id=pid, rule_id=rule_id,
                 title_en=rule["title_en"], title_ar=rule.get("title_ar", ""),
@@ -117,7 +121,11 @@ class Planner:
                     assign[it.uid] = f"DIV{div}"
                 rule_tags[assign[it.uid]].add(rule["id"])
 
-        # 3) work packages in BOQ order
+        # 3) the same package coming from several BOQs (multi-file projects): one RFQ, or one per BOQ?
+        if doc.multi_file:
+            self._cross_boq(items, assign, default, secs, decisions, plan, rule_tags)
+
+        # 4) work packages in BOQ order
         by_key: dict[str, list[Item]] = OrderedDict()
         for it in items:
             by_key.setdefault(assign[it.uid], []).append(it)
@@ -128,6 +136,7 @@ class Planner:
                 division_name=self.rules.division_name(div),
                 item_uids=[it.uid for it in its],
                 source_sections=list(OrderedDict.fromkeys(it.section_uid for it in its)),
+                source_files=list(OrderedDict.fromkeys(secs[it.section_uid].file_id for it in its)),
                 rule_ids=sorted(rule_tags.get(key, set())))
             low = [it for it in its if it.method.startswith("llm") and it.confidence < 0.6]
             if low:
@@ -135,12 +144,54 @@ class Planner:
             plan.work_packages.append(wp)
         return plan
 
+    def _cross_boq(self, items, assign, default, secs, decisions, plan, rule_tags) -> None:
+        """A package whose own items (not ones moved in by a flowchart oval — that oval was already approved)
+        come from 2+ BOQ files → Approve: ONE work package / RFQ;  Deny: one package per BOQ."""
+        members: dict[str, list[Item]] = OrderedDict()
+        for it in items:
+            if not assign[it.uid].startswith("ITEM:"):
+                members.setdefault(assign[it.uid], []).append(it)
+        for key, its in members.items():
+            files = list(OrderedDict.fromkeys(secs[it.section_uid].file_id for it in its
+                                              if assign[it.uid] == default[it.uid]))
+            if len(files) < 2:
+                continue
+            pid = f"XBOQ|{key}"
+            decision = decisions.get(pid, "pending")
+            name_en, name_ar, _ = self._names(key, its, secs)
+            labels = ", ".join(self._fmap[f].label for f in files)
+            n = len(files)
+            plan.proposals.append(Proposal(
+                proposal_id=pid, rule_id="XBOQ_MERGE",
+                title_en=f"{name_en} → one package for {n} BOQs",
+                title_ar=f"{name_ar or name_en} ← باقة واحدة لعدد {n} مقايسات",
+                message_en=f"'{name_en}' appears in {n} BOQs ({labels}). Approve to issue ONE work package and ONE RFQ "
+                           f"for all of them, or Deny to keep a separate package per BOQ.",
+                message_ar=f"الباقة '{name_ar or name_en}' موجودة في عدد {n} مقايسات ({labels}). وافق لإصدار باقة عمل "
+                           f"وطلب عرض سعر واحد لها جميعاً، أو ارفض لإبقاء باقة منفصلة لكل مقايسة.",
+                item_uids=[it.uid for it in its], approve_key=key, deny_key=f"{key}@*",
+                approve_label=f"One {name_en} package", deny_label=f"{n} separate packages (one per BOQ)",
+                decision=decision))
+            if decision == "denied":
+                tags = rule_tags.pop(key, set())
+                for it in its:
+                    f = secs[it.section_uid].file_id
+                    assign[it.uid] = f"{key}@{f if f in files else files[0]}"   # moved-in items join their own BOQ's part
+                    rule_tags[assign[it.uid]] |= tags
+            else:
+                rule_tags[key].add("XBOQ_MERGE")
+
     # --------------------------------------------------------------- helpers
     def _names(self, key: str, its: list[Item], secs) -> tuple[str, str, str]:
+        if "@" in key:                                   # per-BOQ part of a package (cross-BOQ merge denied)
+            base, fid = key.rsplit("@", 1)
+            en, ar, div = self._names(base, its, secs)
+            label = self._fmap[fid].label if fid in getattr(self, "_fmap", {}) else fid
+            return f"{en} — {label}", (f"{ar} — {label}" if ar else ""), div
         if key.startswith("ITEM:"):
             it = its[0]
             s = secs[it.section_uid]
-            label = it.parent_text if it.parent_text else it.description
+            label = it.parent_text or (it.headings[-1] if len(its) > 1 and it.headings else it.description)
             no = it.item_no if len(its) == 1 or not it.item_no else it.item_no.rsplit(".", 1)[0]
             return (f"Div {s.division}: {truncate(label, 45)}" + (f" ({no})" if no else ""), "", s.division or "")
         if key.startswith("SEC:"):
@@ -148,9 +199,14 @@ class Planner:
             return (truncate(s.title, 80), "", "")
         return self.rules.wp_names(key)
 
-    @staticmethod
-    def _sources(its: list[Item], secs) -> str:
-        titles = list(OrderedDict.fromkeys(truncate(secs[it.section_uid].title, 50) for it in its))
+    def _sources(self, its: list[Item], secs) -> str:
+        fmap = getattr(self, "_fmap", {})
+
+        def title(s) -> str:
+            t = truncate(s.title, 50)
+            return f"{t} [{fmap[s.file_id].label}]" if s.file_id in fmap else t
+
+        titles = list(OrderedDict.fromkeys(title(secs[it.section_uid]) for it in its))
         return "; ".join(titles[:3]) + (" …" if len(titles) > 3 else "")
 
 

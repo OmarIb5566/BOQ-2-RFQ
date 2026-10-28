@@ -1,6 +1,6 @@
 # BOQ2RFQ — How the system works
 
-BOQ2RFQ reads a Bill of Quantities (Excel or PDF, Arabic or English) and cuts it into **work packages (WPs)** following the company packaging flowchart. It asks the user to approve or deny every flowchart special case (the ovals). It then exports one PDF snapshot per work package, showing the original BOQ rows with **all columns**, plus a JSON hand-off file for the future RFQ-drafting module.
+BOQ2RFQ reads a Bill of Quantities (Excel or PDF, Arabic or English) and cuts it into **work packages (WPs)** following the company packaging flowchart. It asks the user to approve or deny every flowchart special case (the ovals). It then exports one PDF snapshot per work package, showing the original BOQ rows with **all columns**, plus a JSON hand-off file. Finally it drafts the **RFQ letters** for those packages from the company Word template (§6).
 
 It runs fully locally. The reasoning model is **Gemma (`gemma4:e4b`) through Ollama**, prompted to act as a senior construction manager / QS who is fluent in Arabic construction terminology.
 
@@ -12,6 +12,7 @@ It runs fully locally. The reasoning model is **Gemma (`gemma4:e4b`) through Oll
 |---|---|
 | Web UI (Streamlit) | double-click `run_app.bat` (it creates `.venv` on the first run), or `.venv\Scripts\streamlit run BOQ2RFQ.py` |
 | Command line | `.venv\Scripts\python cli.py "BOQ.xlsx"` (asks Approve/Deny for each special case) |
+| | several BOQs of one project: `cli.py Structural.xlsx Architectural.pdf Landscape.xlsx`, or a zip: `cli.py "Project BOQs.zip"` |
 | | `… --approve-all` / `--deny-all` (non-interactive), `--no-llm` (keyword-only), `--renderer excel\|html`, `--model <name>` |
 
 **Requirements**
@@ -59,6 +60,9 @@ It runs fully locally. The reasoning model is **Gemma (`gemma4:e4b`) through Oll
         │
         ▼
  ⑦ EXPORT ─────────── one PDF cut-out per WP + work_packages.json (RFQ hand-off) + ZIP
+        │
+        ▼
+ ⑧ RFQ DRAFTING ───── company Word template → fields auto-filled only when certain → user approves → .docx per supplier
 ```
 
 The split of responsibilities is deliberate:
@@ -74,7 +78,7 @@ The split of responsibilities is deliberate:
 The company flowchart is stored as a machine-readable rules file. It drives three things:
 1. the planner's behaviour;
 2. the menus of allowed answers given to the LLM;
-3. the agent's **system prompt**, which is generated from this file. You can see the generated prompt in the UI tab *Flowchart rules (agent instructions)*.
+3. the agent's **system prompt**, which is generated from this file (`rules.render_prompt()`).
 
 To change packaging behaviour, edit this file. Normally no code change is needed.
 
@@ -82,8 +86,8 @@ To change packaging behaviour, edit this file. Normally no code change is needed
 
 | Mode | Meaning | Divisions |
 |---|---|---|
-| `as_is` | The division is one work package, exactly as written in the BOQ | 01–04, 06, 07, 11–14, 21–23, 26–28, 31–33 |
-| `split` | The division is split into the listed work-package categories | 05 Metals, 08 Openings, 09 Finishes |
+| `as_is` | The division is one work package, exactly as written in the BOQ | 01–04, 06, 07, 11–14, 21–23, 26–28, 31, 33 |
+| `split` | The division is split into the listed work-package categories | 05 Metals, 08 Openings, 09 Finishes, 32 Landscape |
 | `per_item` | Every BOQ description becomes its own work package (subject to approval, see R6) | 10 Specialties |
 
 Each division also has Arabic and English **keywords** (e.g. `خرسانه`, `concrete`) for the keyword fallback.
@@ -95,17 +99,25 @@ Each division also has Arabic and English **keywords** (e.g. `خرسانه`, `co
 | 05 Metals | Handrails — Steel/Saj · Handrails — Wood · Handrails — Aluminium · Glass Handrails · Access Hatches & Covers · Ship Ladders |
 | 08 Openings | Wooden Doors Only · Metal Doors Only · Aluminium Doors & Windows |
 | 09 Finishes | Plaster · Epoxy Paint · Acrylic Paint · Internal Marble/Granite/Stone · Wooden Floors/Ceilings · Suspended Ceiling/Gypsum Board · Ceramic/Porcelain (incl. skirting) |
+| 32 Landscape — **Hardscape** | Interlock · Dakshum (حجر دقشوم) · Crushed Gravel · Cast-in-Place Concrete Paving · Fountains (everything built for a fountain: its concrete, waterproofing, mosaic, stone, copings, nozzles; not its excavation) · Tartan Sports Flooring · **Hardscape** (every other landscape item: granite/stone paving, kerbs, benches, play equipment, car stoppers, barriers …) |
+| 32 Landscape — **Softscape** | Mobilization Furniture (أعمال الفرش: caravans / temporary site offices) · Planting (أعمال الزراعة) |
+
+**Landscape** packages are only used inside landscape sections, and building packages are never offered there. The external-marble rule (R1) does not apply in landscape: it is for the building's cladding only, so granite paving stays in landscape. A landscape section is recognised by:
+- its title or sheet name (لاندسكيب, landscape, hardscape, softscape, تنسيق الموقع …); or
+- at least two landscape section codes in its headings (old MasterFormat `قسم 027xx–029xx`, or `32 xx xx`).
+
+The settings live in `landscape_detection`. "الموقع العام" on its own is *not* a signal yet.
 
 Each category has:
 - a **definition**, which is shown to the LLM;
 - **keywords** for the pre-screen;
 - optionally **`requires_any`**: words that must also appear. For example, *roof tiles* needs a tile word **and** a roof word (`سطح`, `roof`, `terrace`).
 
-Items of a split division that match no category go to a **"Div NN — other items"** package (category `MISC`).
+Items of a split division that match no category go to a **"Div NN — other items"** package (category `MISC`). A division can rename it with `misc`; Landscape calls it **Hardscape**.
 
 ### 3.3 Ovals — special cases that need the user's approval (`special_rules`)
 
-Special categories (`"special": true`) are looked for in **every** division, whatever its mode. Each rule says what happens on **Approve** and on **Deny**:
+Special categories (`"special": true`) are looked for in every division, whatever its mode, unless the division limits them. Landscape only knows the Earthwork oval (`only_specials`), and the earthwork division itself cannot pull its own items (`exclude_specials`). Each rule says what happens on **Approve** and on **Deny**:
 
 | Rule | Detected items | Approve | Deny |
 |---|---|---|---|
@@ -114,7 +126,9 @@ Special categories (`"special": true`) are looked for in **every** division, wha
 | **R3** Expansion joints | Expansion / movement / settlement joints and joint covers | Separate **Expansion Joints** WP | Stays in its own section's package |
 | **R4** Wooden louvers | Louvers of real wood | Grouped with **Wooden Doors Only** (if present) | Separate **Wooden Louvers** WP |
 | **R5** Metal louvers | Aluminium (even with wood texture), steel or sheet-metal louvers | **Metal Louvers** WP under Div 05 Metals | **Louvers** WP under Div 08 Openings |
-| **R6** Div 10 per item | Div 10 Specialties with ≥ 2 BOQ descriptions | One WP **per BOQ description** (sub-items such as 21.1, 21.2 stay with their parent 21) | Div 10 kept as **one** WP |
+| **R6** Div 10 per item | Div 10 Specialties with ≥ 2 BOQ descriptions | One WP **per BOQ description** (sub-items such as 21.1, 21.2 stay with their parent 21, and size/colour variants stay together, see 3.5) | Div 10 kept as **one** WP |
+| **XBOQ** Same package in several BOQs (multi-BOQ projects only) | A package whose own items come from 2+ uploaded BOQs (e.g. *Div 03: Concrete* in the Structural **and** the Landscape BOQ). Items moved in by another oval (e.g. earthwork pulled in by R7) do not count, because that oval was already approved | **One** work package and **one** RFQ for all BOQs | One package per BOQ, e.g. *Div 03: Concrete — Structural* and *Div 03: Concrete — Landscape* |
+| **R7** Earthwork | Excavation, backfilling, soil replacement, compaction found **outside** the earthwork section, in the structural and/or landscape parts (incl. excavation for fountains / pump rooms) | Moved into the **Div 31 Earthwork** WP. If the BOQ has no earthwork section, an Earthwork WP is **created** from these items. | Stays in the structural / landscape package where the BOQ put it |
 
 Each rule carries bilingual title and message templates. These become the notification the user sees, e.g. *"1 external marble/stone item(s) from Division 04 : Masonry will be GROUPED with the Div 4 Masonry work package … Approve to bundle them with masonry, or Deny …"* together with the Arabic text.
 
@@ -123,6 +137,7 @@ Each rule carries bilingual title and message templates. These become the notifi
 | Rule | Condition | Effect |
 |---|---|---|
 | **C1** External-cladding context | The item sits under a heading (or a short, title-like parent such as `AR 20.0 التكسية الخارجية بالحجر`) containing an **external** word (خارجي، واجهات، external, facade…) **and** a **cladding** word (تكسية، تجاليد، cladding…; common misspellings such as تكيسة included) | The item is classed as **External Marble / Stone Cladding**, and then follows R1 like any other external-marble item |
+| **C2** Fountain items (Landscape only) | The item's **own text or its description** (not the headings, which can run on past the fountains) names a fountain: نافورة، نوافير، fountain, water wall, or a water-feature code `WF-01` … | The item goes to **Fountains**: its concrete, waterproofing, mosaic, stone, copings, nozzles. Fountain **excavation** keeps the Earthwork oval |
 
 Notes on C1:
 - **What counts as context:** only the headings and a short parent. The item's own text is never used.
@@ -130,11 +145,37 @@ Notes on C1:
 - **Other ovals win:** items the LLM placed in another special case (roof tiles, expansion joints, louvers) keep that oval.
 - **Why it exists:** a granite skirting under "التكسية الخارجية بالحجر" is external stone, even though "skirting" sounds internal.
 
+### 3.5 Variants — one product in several sizes is one package (`variants`, `analysis/variants.py`)
+
+General rule: the same product in different **sizes, dimensions, thicknesses, colours, patterns or codes** always lands in one work package. Examples: hollow blocks 120 / 250 mm, interlock PC.01–PC.08 in grey / red, acrylic paint dark grey / light grey / white, signs 250 mm / 450×200 mm, fountain mosaic WF-01…09.
+
+**How variants are recognised.** Neighbouring items in a section are compared after removing numbers, dimensions, units, item codes, colour / pattern / finish words and "includes …" clauses. They are variants when the remaining text is (almost) the same:
+- **Under the same parent description:** their own lines are compared. A parent repeated after a page break counts as the same parent.
+- **Without a parent:** the full descriptions are compared.
+- **Short size lines under a heading that describes the product** (e.g. "20mm thick, Aluminum signage …") are compared word by word.
+
+Items under **different** parents are never variants. For example, fountain excavation WF-01 and fountain waterproofing WF-01 stay apart.
+
+**What happens to a group.** After classification, every item in it gets the group's category:
+- a manual choice wins;
+- then a context rule;
+- otherwise the confidence-weighted majority.
+
+The log reports each group, and the items show `+variant` in *By*. A correction made in the UI on one variant applies to the whole group. In Div 10, a variant group is one work package.
+
 ---
 
 ## 4. Step by step
 
 ### ① Ingest
+
+**One project, one or many BOQs** (`ingest/intake.py`, `agent.analyze`). A project is often split into several BOQs (structural, architectural, landscape …). You can upload several Excel / PDF files at once, and/or `.zip` archives of them (folders inside are fine).
+- **Zips** are unpacked safely: no paths outside the target folder, no symlinks, at most 500 files / 2 GB. Office lock files (`~$…`), hidden files and `__MACOSX` are ignored, and so is anything that is not Excel or PDF.
+- **PDFs in a multi-file upload are pre-screened.** Only files with a BOQ table header on their first pages are read, so drawings and specifications in a project zip are skipped quickly (scanned pages are OCR'd one at a time, only until a header is found).
+- **Each BOQ is read on its own** (as below) with its own id `F1, F2 …`. Every row, sheet and section remembers its file.
+- **All BOQs are then packaged together** as one project, so flowchart rules work across files. For example, earthwork from the structural BOQ and from the landscape BOQ ends up in one Earthwork package.
+- **Skipped files are listed**, with the reason (no BOQ table, unreadable …).
+
 
 **Excel** (`ingest/excel_reader.py`, `excel_com.py`)
 1. **Copy and convert.** The upload is copied into the run folder. `.xls`/`.xlsb` are converted to `.xlsx` by Excel; if Excel is unavailable, xlrd reads `.xls` values only.
@@ -169,6 +210,8 @@ Each row gets a **role**:
 | `subtotal` | `Total / اجمالي / مجموع / Carried to Summary / ما قبله …`. Page furniture such as `صفحة` or `Issue date` is recognised and ignored |
 
 - **Items.** Every leaf becomes an **Item** carrying its own text, the **parent description** (when its number is a child of the parent's, e.g. 3.2 under 3, or a lettered sub-item), the stack of headings above it, unit, quantity, rate and total.
+- **Sibling-numbered lines.** Some BOQs number a description and its priced lines at the same level, e.g. description `2.8.1 اعمال الحفر` followed by lines `2.8.1 … 2.8.9`. Short priced lines that directly follow a description at its own level belong to it.
+- **Group titles.** A numbered description that gets no priced lines of its own (e.g. `2.8 قسم 02815 النوافير`) is a group **heading** for what follows. It is no longer an orphan stuck to the previous item.
 - **Orphan rows.** Descriptive rows that belong to no item, such as the wrapped tail of a description printed under its quantity line, are attached to the preceding item, so no text is lost from the snapshots.
 
 ### ③ Divisions (`analysis/classifier.py → assign_divisions`)
@@ -196,8 +239,9 @@ The section's division decides its packaging mode (`as_is`, `split` or `per_item
    - the LLM disagreed with the keyword hint.
 
    The review prompt tells the model to judge by material, location (internal/external) and executing trade, and to ignore included ancillary scope.
-5. **Context rules.** C1 is applied last and overrides the LLM.
-6. **No-LLM fallback.** Each item gets its keyword hint, or `MISC`, at confidence 0.4.
+5. **Context rules.** C1 is applied after the LLM and overrides it.
+6. **Variants.** Size/colour/code variants are aligned to one category (3.5).
+7. **No-LLM fallback.** Each item gets its keyword hint, or `MISC`, at confidence 0.4.
 
 Every item records `category`, `confidence`, `method` (`llm`, `llm-review`, `keyword`, `section`, `context-rule`, `manual`) and `reason`, all visible in the UI.
 
@@ -218,13 +262,13 @@ Re-planning (after any decision or correction) keeps all earlier decisions.
 
 ### ⑥ User review (Streamlit UI)
 
-- **Special cases panel:** one card per proposal, in English and Arabic, with the affected items (number, section, description, unit, qty, the model's reason) and **Approve / Deny** buttons. Each button shows what it leads to (e.g. *Approve → Div 04: Masonry · Deny → External Marble / Stone Cladding*).
-- **Work-package table:** WP id, English/Arabic names, division, item count, item numbers, special rules, notes.
-- **Review & correct:**
+The app has two tabs, **Work packages** and **RFQs**, and a step tracker across the top: *Upload BOQ → Decide special cases → Export work packages → Send RFQs*. **↺ New BOQ** starts over. Settings (model, renderer …) come from `config.py` / environment variables and are not shown in the app. The only engine message is a warning when the analysis engine is offline.
+
+- **Special cases:** one card per proposal, in English and Arabic, with its items (number, description, unit, qty). The two buttons name the outcome, e.g. *✓ Div 04: Masonry* / *✗ Keep as External Marble / Stone Cladding*. The chosen one is highlighted.
+- **Work-package table:** WP id, English/Arabic names, item count, item numbers.
+- **Adjust packaging (optional):**
   - change a section's division (that section is re-classified);
-  - change any item's category in an editable table (set to `manual`, confidence 1.0).
-- **Agent log:** every step, LLM call count and time.
-- **Flowchart rules tab:** the exact system prompt generated from the rules file.
+  - move any item to another package, picked by package name; the change also applies to the item's size/colour variants.
 
 ### ⑦ Export — the cut-outs (`render/snapshots.py`, `planning/planner.py → snapshot_rows`)
 
@@ -247,12 +291,15 @@ The result keeps the original look: logos, fonts, colours, borders, merged cells
 
 **PDF source:** the original page regions (header band + item rows, full table width) are cropped at **vector quality** and stacked onto new pages. The header band is repeated on each output page.
 
+**Packages spanning several BOQs.** A work package can hold items from several BOQ files. Each file's rows are rendered with that file's own method (Excel, HTML fallback or PDF crop), and the parts are joined, in project order, into **one PDF** per package.
+
 **Every PDF** is stamped in the top margin: `WP-03 | Glass Handrails | درابزين زجاج — page 1/1`.
 
 **Output folder** (`workspace/<run_id>/`):
 
 ```
-source.xlsx / source.pdf          the copy that was analysed (converted if needed)
+uploads/                          unpacked zip contents
+F1/, F2/ …                        per BOQ file: the copy that was analysed (source.xlsx / source.pdf, converted if needed)
 session.json                      full state: rows, sections, items + classifications, plan, decisions, log
 work_packages/WP-01 ….pdf         one cut-out per work package
 work_packages/work_packages.json  RFQ hand-off (see §6)
@@ -272,9 +319,70 @@ Task prompts: `DIVISION_TASK`, `ITEM_TASK`, `REVIEW_TASK` (single item, with thi
 
 ---
 
-## 6. Hand-off to the future RFQ module (`rfq/interface.py`)
+## 6. RFQ drafting (`rfq/`) — the *RFQs* tab
 
-Every export writes `work_packages/work_packages.json`, a list of `RFQPackage`:
+After the work packages are exported, the agent drafts one RFQ letter per work package and supplier from the company Word template, `boq_agent/rfq/templates/RFQ Templet.docx`. A different `.docx` can be uploaded under *Use a different RFQ template*.
+
+The tab has three parts:
+- **Project details:** project name, location, owner and the submission deadline. The closing-paragraph deadline follows it unless *Use a different date* is ticked.
+- **Suppliers:** **one table**, one row per work package and supplier. Each package starts with one row; add a row for each extra supplier, and rows are kept sorted under their package. Delete a row to skip that package. The package name in the letter is the work-package name.
+- **Generate:** a preview of the first letter, then one `.docx` per row.
+
+### 6.1 Template fields
+
+Every `( … )` or `[ … ]` in the template is a field. The template's own wording **is** the list of fields, so a new placeholder added in Word becomes a new field automatically.
+
+When a letter is written, only the placeholder characters are replaced; every other word, the numbering, styles and page setup stay as in the template. Each value takes the formatting of its placeholder, e.g. bold in the opening sentence, 14 pt bold in the title. A field left empty keeps its placeholder text in the letter, and the tab lists such fields before you generate.
+
+What each field means is set in `boq_agent/rfq/fields.json`:
+
+| Field in the template | Scope | Filled from |
+|---|---|---|
+| `(Package Name / Scope of Works)` | per work package | the work-package name |
+| `(Project Name)` | project | auto-detected from the BOQ when certain (see 6.2) |
+| `(Project Location)` | project | auto-detected when certain |
+| `(Owner Name)` | project | auto-detected when certain |
+| `(Supplier Name)` | per letter | typed by the user; one letter per supplier |
+| `(Date)` | project | date picker (quotation deadline in *Project Details*) |
+| `[Submission Deadline]` | project | "Same as Date" (default) or its own date |
+
+### 6.2 When a value is auto-filled
+
+A project field is filled in by the agent **only when all four checks pass**:
+1. **Explicit label.** The value is introduced by a label in the BOQ's title area, page header or page footer: `Project:`, `Client:`, `Owner:`, `Location:`, `اسم المشروع`, `مشروع …`, `المالك:`, `صاحب العمل:`, `الموقع:` …
+2. **Verbatim.** The value is copied exactly from the file.
+3. **Consistent.** Every sheet or page that states it gives the same value.
+4. **Confirmed by the LLM.** The model reads the same lines independently and extracts the same value. If the LLM is off, the fill is marked "label match only".
+
+Anything less certain is shown as a **suggestion** with a *Use* button and is never filled silently. That covers an unlabelled title line, values that differ between sheets, and cases where the label and the LLM disagree.
+
+Results on the BOQs tested so far:
+
+| BOQ | Auto-filled | Suggested only |
+|---|---|---|
+| Project 2 (`BOQ All QTY.xlsx`) | Project Name = *Bamboo, Family House* (all 8 page headers + LLM) | — |
+| Terrace Landscape | Project Name = *Terrace Compound Infrastructure*; Owner = *شركة التعمير والإسكان للإستثمار العقارى* | — |
+| ETS-A (Arabic) | — (the label gives *محطة تبادل الطاقة - ETS-A* but the LLM read another line) | both readings; location *العاصمة الادارية الجديدة - الحي الحكومي* |
+| BL-01, trial (PDF) | — (no labels in the headers) | the LLM's readings |
+
+### 6.3 Approval before anything is written
+
+- **Confirm each detected value.** Every value found in the BOQ shows where it was found and a *Confirm* tick.
+- **Generate stays locked** until every detected value has been confirmed or replaced. A value you type or pick yourself counts as yours and needs no further approval.
+- **Preview first.** A preview shows the first letter with the values in place before you generate.
+- **Audit trail.** The approved values, file list and time are saved in `session.json` (`rfq`).
+
+### 6.4 Output
+
+`workspace/<run_id>/rfq/<WP folder>/` holds:
+- `RFQ - WP-02 Div 04 Masonry - <Supplier>.docx`, one per supplier;
+- `BOQ - WP-02 ….pdf`, the package's BOQ cut-out (the template's "BOQ" attachment).
+
+Everything is zipped into `<BOQ name> - RFQs.zip`. Drawings and specifications are not part of the BOQ, so you attach them yourself.
+
+### 6.5 Machine-readable hand-off (`rfq/interface.py`)
+
+Every export also writes `work_packages/work_packages.json`, a list of `RFQPackage`, for any downstream tool (vendor selection, ERP import):
 
 ```json
 {
@@ -290,12 +398,7 @@ Every export writes `work_packages/work_packages.json`, a list of `RFQPackage`:
 }
 ```
 
-The RFQ module should depend only on this contract, never on the BOQ parsing internals. Planned flow (stubs `RFQDraft`, `RFQDrafter`, `LLMRFQDrafter` already exist):
-1. Load the packages.
-2. Pick vendors per `wp_key`/`division` from the vendor register.
-3. Draft bilingual RFQ letters with the same local LLM, with the snapshot PDF attached.
-4. User review.
-5. Export.
+Downstream tools should depend only on this contract, never on the BOQ parsing internals.
 
 ---
 
@@ -309,6 +412,8 @@ The RFQ module should depend only on this contract, never on the BOQ parsing int
 | Change a division from "as written" to "split" (or vice-versa) | the division's `mode` |
 | Add a new oval / exception | add a category with `"special": true` and a `special_rules` entry with `approve`/`deny` (`merge_into` with `only_if_target_exists`, `standalone`, `section_default`, `per_item`, `as_is`) plus bilingual messages (`{n}`, `{sources}`, `{from_wp}` placeholders) |
 | Add a fixed "heading decides the package" rule | add an entry to `context_rules` |
+| Add a field to the RFQ letter | type it in the Word template as `(Field Name)` or `[Field Name]`; optionally describe it in `rfq/fields.json` (scope, date type, detection) |
+| Teach RFQ detection a new label (e.g. `الاستشاري:`) | the `labels` lists in `rfq/fields.json` |
 
 The system prompt, the LLM answer menus, the planner and the UI all pick up the changes on the next run.
 
@@ -325,23 +430,30 @@ The system prompt, the LLM answer menus, the planner and the UI all pick up the 
 | `boq_agent/models.py` | Shared data model (`Row`, `Item`, `Section`, `WorkPackage`, `Proposal`, `Plan`, `Session`), all JSON-serialisable |
 | `boq_agent/ingest/excel_reader.py` | Excel → rows (sheets, print area, hidden rows/cols, header detection, summary-sheet skip) |
 | `boq_agent/ingest/pdf_reader.py` | PDF → rows (character-level words, OCR, RTL fix, column mapping) |
+| `boq_agent/ingest/intake.py` | Multi-file / zip intake, safe unzip, BOQ pre-screen for PDFs |
 | `boq_agent/ingest/structure.py` | Row roles, sections, parent/child items |
 | `boq_agent/excel_com.py` | Excel automation (conversion, rendering) and xlrd fallback |
 | `boq_agent/knowledge/flowchart_rules.json` | **The flowchart as data** |
 | `boq_agent/knowledge/rules.py` | Loads the rules; keyword pre-screen; context rules; renders the flowchart prompt |
 | `boq_agent/llm/client.py` | Ollama client with JSON-schema output and retries |
 | `boq_agent/llm/prompts.py` | Persona, task prompts, answer schemas |
-| `boq_agent/analysis/classifier.py` | Division assignment and item classification (batch → review → context rules) |
+| `boq_agent/analysis/classifier.py` | Division assignment (incl. landscape detection) and item classification (batch → review → context rules → variants) |
+| `boq_agent/analysis/variants.py` | Groups size / colour / code variants and keeps each group in one package |
 | `boq_agent/planning/planner.py` | Flowchart engine and snapshot row selection |
 | `boq_agent/render/snapshots.py` | PDF cut-outs (Excel COM / HTML / PDF crop) |
-| `boq_agent/rfq/interface.py` | RFQ hand-off contract and stubs for the next module |
+| `boq_agent/rfq/templates/RFQ Templet.docx` | The company RFQ template |
+| `boq_agent/rfq/fields.json` | What each template field means, its scope, and the labels used for detection |
+| `boq_agent/rfq/template.py` | Field discovery and verbatim filling of the Word template |
+| `boq_agent/rfq/detect.py` | Reads the BOQ title area / headers / footers and auto-fills only near-certain values |
+| `boq_agent/rfq/builder.py` | Prefill (nothing committed) and generation of the letters + ZIP |
+| `boq_agent/rfq/interface.py` | `work_packages.json` hand-off contract |
 | `boq_agent/text_utils.py` | Arabic/English normalisation, keyword matching, inclusion-clause stripping, formatting |
 
 ---
 
 ## 9. Known limits and judgement calls
 
-- **The LLM can vary at the margins.** Temperature is 0, but borderline items (e.g. stone skirting, cement-board copings) can still change between model versions. Check the *By / Reason* columns in *Review & correct*, and fix any item there. Manual corrections always win.
+- **The LLM can vary at the margins.** Temperature is 0, but borderline items (e.g. stone skirting, cement-board copings) can still change between model versions. Check the packages and fix any item in *Adjust packaging*; the method and reason per item are kept in `session.json`. Manual corrections always win.
 - **Not every BOQ layout is covered.** Header and structure detection handle the usual Egyptian/Gulf layouts. A BOQ with no recognisable header on a sheet is reported as a warning and that sheet is skipped.
 - **Scanned PDFs depend on OCR quality.** Low-resolution scans may mis-map columns.
 - **Without Microsoft Excel, snapshots lose some fidelity.** The HTML renderer reproduces structure and basic styling, but not logos or page headers/footers.

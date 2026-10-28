@@ -75,14 +75,15 @@ def convert_with_xlrd(src: Path, dst: Path) -> Path:
     return dst
 
 
-def prepare_workbook(src: Path, work_dir: Path, log=print) -> Path:
-    """Copy (and if needed convert) the uploaded workbook into the run folder; returns a .xlsx/.xlsm path."""
+def prepare_workbook(src: Path, work_dir: Path, log=print, stem: str = "source") -> Path:
+    """Copy (and if needed convert) the uploaded workbook into the run folder; returns a .xlsx/.xlsm path.
+    `stem` must be unique per project: Excel cannot open two workbooks with the same file name at once."""
     ext = src.suffix.lower()
     if ext in (".xlsx", ".xlsm"):
-        dst = work_dir / f"source{ext}"
+        dst = work_dir / f"{stem}{ext}"
         shutil.copy2(src, dst)
         return dst
-    dst = work_dir / "source.xlsx"
+    dst = work_dir / f"{stem}.xlsx"
     try:
         log(f"Converting {src.name} to .xlsx with Microsoft Excel …")
         return convert_with_excel(src, dst)

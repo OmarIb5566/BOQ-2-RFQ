@@ -47,6 +47,7 @@ def _hidden_cols(ws) -> set[int]:
 
 
 def read_excel(path: Path, doc_id: str, source_name: str, llm_header: Optional[Callable] = None,
+               file_id: str = "",
                log: Callable[[str], None] = print) -> BOQDocument:
     wb = openpyxl.load_workbook(path, data_only=True)
     doc = BOQDocument(doc_id=doc_id, filename=source_name, source_path=str(path), work_path=str(path), kind="excel")
@@ -109,7 +110,7 @@ def read_excel(path: Path, doc_id: str, source_name: str, llm_header: Optional[C
         mapped = {fcols[f] for f in ("item_no", "unit", "quantity", "rate", "total") if f in fcols}
         desc_col = fcols.get("description")
 
-        prefix = f"X{s_idx}"
+        prefix = f"{file_id + '.' if file_id else ''}X{s_idx}"
         rows: list[Row] = []
         header_uids: list[str] = []
         initial_title = ""
@@ -117,7 +118,7 @@ def read_excel(path: Path, doc_id: str, source_name: str, llm_header: Optional[C
             if r in hidden_rows:
                 continue
             cells = [disp(r, c) for c in range(first_c, last_col + 1)]
-            ref = SourceRef(sheet=ws.title, row=r, span_to=span.get(r))
+            ref = SourceRef(file=file_id, sheet=ws.title, row=r, span_to=span.get(r))
             if r <= h_last:
                 if r >= h_first:
                     row = Row(uid=f"{prefix}R{r}", ref=ref, cells=cells, text=" ".join(t for t in cells if t), role="header")
@@ -142,7 +143,10 @@ def read_excel(path: Path, doc_id: str, source_name: str, llm_header: Optional[C
         doc.rows.extend(rows)
         doc.sections.extend(sections)
         doc.items.extend(items)
+        for sec in sections:
+            sec.file_id = file_id
         doc.scopes.append(TableScope(
+            file=file_id,
             name=ws.title, kind="excel", header_row_uids=header_uids,
             header_labels={f: nfkc(v) for f, v in header.labels.items()},
             field_columns=fcols, first_col=first_c, last_col=last_col, last_row=last_row,

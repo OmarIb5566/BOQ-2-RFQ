@@ -10,6 +10,7 @@ from ..llm import prompts as P
 from ..llm.client import LLMError, OllamaClient
 from ..models import BOQDocument, Item, Section
 from ..text_utils import norm, truncate
+from .variants import consolidate, variant_groups
 
 _EXPLICIT_DIV = re.compile(r"\b(?:division|divi?|div\.?)\s*[:\-]?\s*0?(\d{1,2})\b", re.I)
 
@@ -25,7 +26,46 @@ class Classifier:
         self.system = P.system_prompt(rules)
 
     # ------------------------------------------------------------ divisions
+    def split_mixed_sections(self, doc: BOQDocument) -> None:
+        """A sheet without 'الباب …' / 'Division NN' titles whose item groups name different trades
+        (أعمال الحفر والردم / أعمال الخرسانة / أعمال العزل …) is split into one section per trade group,
+        so concrete in a structural BOQ is not packaged as earthwork."""
+        from ..ingest.structure import SECTION_RE
+
+        items = doc.item_map()
+        out: list[Section] = []
+        for s in doc.sections:
+            if SECTION_RE.search(norm(s.title)) or _EXPLICIT_DIV.search(norm(s.title)):
+                out.append(s)
+                continue
+            runs: list[tuple[Optional[str], str, list[str]]] = []      # (division hint, group label, item uids)
+            cur: Optional[str] = None
+            for u in s.item_uids:
+                it = items[u]
+                label = (it.parent_text.splitlines()[0] if it.parent_text else "") or (it.headings[-1] if it.headings else "")
+                label = truncate(label.strip(), 60)
+                hint = self.rules.division_hint(label) if label else None
+                hint = hint or cur                                      # unlabelled lines continue the current group
+                if runs and hint == runs[-1][0]:
+                    runs[-1][2].append(u)
+                else:
+                    runs.append((hint, label, [u]))
+                cur = hint
+            if len({h for h, _, _ in runs if h}) < 2:
+                out.append(s)
+                continue
+            for k, (hint, label, uids) in enumerate(runs, 1):
+                out.append(Section(uid=f"{s.uid}.{k}", title=f"{s.title.strip()} — {label}" if label else s.title,
+                                   sheet=s.sheet, file_id=s.file_id, title_row_uids=list(s.title_row_uids),
+                                   subtotal_row_uids=list(s.subtotal_row_uids) if k == len(runs) else [],
+                                   item_uids=uids))
+                for u in uids:
+                    items[u].section_uid = f"{s.uid}.{k}"
+            self.log(f"Section '{truncate(s.title, 40)}' has no division titles — split into {len(runs)} trade group(s).")
+        doc.sections = out
+
     def assign_divisions(self, doc: BOQDocument) -> None:
+        self.split_mixed_sections(doc)
         items = doc.item_map()
         pending: list[Section] = []
         for s in doc.sections:
@@ -35,6 +75,7 @@ class Classifier:
             else:
                 pending.append(s)
         if not pending:
+            self._detect_landscape(doc)
             return
         codes = list(self.rules.divisions) + ["00"]
         if self.llm:
@@ -69,18 +110,28 @@ class Classifier:
                 hint = self.rules.division_hint(s.title + " " + (s.sheet or ""))
                 if hint:
                     s.division, s.division_confidence, s.division_method = hint, 0.5, "keyword"
+        self._detect_landscape(doc)
         for s in doc.sections:
             self.log(f"Section '{truncate(s.title, 60)}' → Div {s.division or '??'} "
                      f"{self.rules.division_name(s.division)} ({s.division_method}, {s.division_confidence:.2f})")
 
+    def _detect_landscape(self, doc: BOQDocument) -> None:
+        """Sections that are landscape by title / sheet name or by landscape section codes → Div 32
+        (an explicit 'Division NN' in the title still wins unless the title itself says landscape)."""
+        if "32" not in self.rules.divisions:
+            return
+        items = doc.item_map()
+        for s in doc.sections:
+            if s.division == "32":
+                continue
+            ctx = [h for u in s.item_uids for h in items[u].headings] + [items[u].parent_text for u in s.item_uids]
+            by_title = self.rules.is_landscape(s.title, s.sheet or "", [])
+            if (s.division_method != "explicit" or by_title) and self.rules.is_landscape(s.title, s.sheet or "", ctx):
+                s.division, s.division_confidence, s.division_method = "32", 1.0, "landscape"
+
     # ----------------------------------------------------------------- items
     def allowed_categories(self, section: Section) -> list[str]:
-        mode = self.rules.mode(section.division)
-        if mode == "split":
-            return self.rules.split_ids + self.rules.special_ids + [MISC]
-        if mode == "as_is":
-            return self.rules.special_ids + [NONE]
-        return []
+        return self.rules.allowed_categories(section.division)
 
     def classify_items(self, doc: BOQDocument, sections: Optional[list[str]] = None) -> None:
         items = doc.item_map()
@@ -117,6 +168,16 @@ class Classifier:
                 self.progress(done / total, f"Classifying items … {done}/{total}")
         self._review(doc, work)
         self._apply_context_rules(doc, sections)
+        self._keep_variants_together(doc)
+
+    def _keep_variants_together(self, doc: BOQDocument) -> None:
+        """General rule: one product in different sizes / colours / codes stays in one work package."""
+        for it in doc.items:
+            it.variant_group = None
+        groups = variant_groups(doc, self.rules.variants)
+        n = consolidate(doc, groups, self.log)
+        if groups:
+            self.log(f"Variant groups: {len(set(groups.values()))} group(s), {len(groups)} items; {n} re-aligned.")
 
     def _apply_context_rules(self, doc: BOQDocument, sections: Optional[list[str]]) -> None:
         """Deterministic overrides from the group an item sits under (final say over the LLM)."""
@@ -143,7 +204,7 @@ class Classifier:
         text = "\n".join(f"[{iid}] {it.llm_text()}" for iid, it in zip(ids, batch))
         prompt = P.ITEM_TASK.format(section=truncate(s.title, 100), division=s.division or "??",
                                     division_name=self.rules.division_name(s.division),
-                                    menu=self.rules.category_menu(allowed), items=text)
+                                    menu=self.rules.category_menu(allowed, s.division), items=text)
         try:
             ans = self.llm.chat_json(self.system, prompt, P.items_schema(allowed, ids))
         except LLMError as e:
@@ -188,7 +249,7 @@ class Classifier:
             prompt = P.REVIEW_TASK.format(first=it.category or NONE, conf=it.confidence, hint=it.keyword_hint or "-",
                                           section=truncate(sec[it.section_uid].title, 100),
                                           division=s.division or "??", division_name=self.rules.division_name(s.division),
-                                          menu=self.rules.category_menu(allowed), item=it.llm_text(500, 600))
+                                          menu=self.rules.category_menu(allowed, s.division), item=it.llm_text(500, 600))
             try:
                 ans = self.llm.chat_json(self.system, prompt, P.review_schema(allowed), think=True)
             except LLMError as e:

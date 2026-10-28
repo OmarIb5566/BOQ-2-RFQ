@@ -19,3 +19,8 @@ masterformat-2016.pdf
 
 # Office lock files
 ~$*
+
+# Generated analysis / build outputs
+graphify-out/
+build/
+dist/

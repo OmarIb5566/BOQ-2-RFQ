@@ -1,5 +1,7 @@
 """Work-package snapshots ("cut-outs") as PDF.
 
+A work package can hold items from several BOQ files of the project. Each file's rows are rendered as a
+"part" with that file's own method, and the parts are joined into one PDF per work package:
 * Excel source  -> Microsoft Excel hides every row that is not part of the WP and prints the sheet
                    (keeps the original formatting, logos, print titles and ALL columns).
                    Fallback without Excel: an HTML re-rendering of the same rows/columns.
@@ -8,6 +10,7 @@
 """
 from __future__ import annotations
 
+import contextlib
 import html
 import shutil
 from collections import OrderedDict
@@ -18,7 +21,7 @@ import pymupdf as fitz
 from openpyxl.utils import get_column_letter
 
 from ..config import Settings
-from ..models import BOQDocument, Plan, WorkPackage
+from ..models import BOQDocument, Plan, SourceFile, WorkPackage
 from ..planning.planner import snapshot_rows
 from ..text_utils import fmt_value, safe_filename
 
@@ -55,121 +58,102 @@ def _stamp(pdf_path: Path, wp: WorkPackage, settings: Settings) -> None:
     shutil.move(tmp, pdf_path)
 
 
-# =============================================================================== Excel
-def _excel_jobs(doc: BOQDocument, plan: Plan) -> list[tuple[WorkPackage, "OrderedDict[str, list[int]]"]]:
+def _file_parts(doc: BOQDocument, wp: WorkPackage) -> list[tuple[SourceFile, list[str]]]:
+    """The WP's snapshot rows grouped by source file, in project order."""
     rmap = doc.row_map()
-    jobs = []
-    for wp in plan.work_packages:
-        per_sheet: OrderedDict[str, set[int]] = OrderedDict()
-        for uid in snapshot_rows(doc, wp):
-            ref = rmap[uid].ref
-            rows = per_sheet.setdefault(ref.sheet, set())
-            rows.update(range(ref.row, (ref.span_to or ref.row) + 1))
-        jobs.append((wp, OrderedDict((k, sorted(v)) for k, v in per_sheet.items())))
-    return jobs
+    fmap = doc.file_map()
+    parts: OrderedDict[str, list[str]] = OrderedDict()
+    for uid in snapshot_rows(doc, wp):
+        parts.setdefault(rmap[uid].ref.file, []).append(uid)
+    return [(fmap[f], uids) for f, uids in parts.items() if f in fmap]
 
 
-def _header_rows(doc: BOQDocument, sheet: str) -> list[int]:
+def _sheet_rows(doc: BOQDocument, uids: list[str]) -> "OrderedDict[str, list[int]]":
     rmap = doc.row_map()
-    sc = doc.scope(sheet)
+    per_sheet: OrderedDict[str, set[int]] = OrderedDict()
+    for uid in uids:
+        ref = rmap[uid].ref
+        per_sheet.setdefault(ref.sheet, set()).update(range(ref.row, (ref.span_to or ref.row) + 1))
+    return OrderedDict((k, sorted(v)) for k, v in per_sheet.items())
+
+
+def _header_rows(doc: BOQDocument, sheet: str, file: str) -> list[int]:
+    rmap = doc.row_map()
+    sc = doc.scope(sheet, file)
     return sorted(rmap[u].ref.row for u in sc.header_row_uids) if sc else []
 
 
-def render_excel_com(doc: BOQDocument, plan: Plan, out_dir: Path, settings: Settings, log: Log) -> dict[str, Path]:
-    from ..excel_com import excel_app
-
-    results: dict[str, Path] = {}
-    tmp_dir = out_dir / "_parts"
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-    with excel_app() as xl:
-        wb = xl.Workbooks.Open(str(Path(doc.work_path).resolve()), UpdateLinks=0, ReadOnly=True)
-        for wp, sheets in _excel_jobs(doc, plan):
-            parts = []
-            for k, (sheet, rows) in enumerate(sheets.items()):
-                sc = doc.scope(sheet)
-                ws = wb.Worksheets(sheet)
-                hdr = _header_rows(doc, sheet)
-                last = max([sc.last_row] + rows)
-                orig_hidden = set(sc.hidden_rows)
-                show = (set(range(min(hdr), max(hdr) + 1)) if hdr else set()) | set(rows)
-                ws.Rows(f"1:{last}").Hidden = True
-                for a, b in _runs([r for r in show if r not in orig_hidden]):
-                    ws.Rows(f"{a}:{b}").Hidden = False
-                try:
-                    xl.PrintCommunication = False
-                except Exception:  # noqa: BLE001
-                    pass
-                ps = ws.PageSetup
-                ps.PrintArea = f"${get_column_letter(sc.first_col)}$1:${get_column_letter(sc.last_col)}${last}"
-                if hdr:
-                    ps.PrintTitleRows = f"${min(hdr)}:${max(hdr)}"
-                ps.Zoom = False
-                ps.FitToPagesWide = 1
-                ps.FitToPagesTall = False
-                try:
-                    xl.PrintCommunication = True
-                except Exception:  # noqa: BLE001
-                    pass
-                ws.ResetAllPageBreaks()
-                part = tmp_dir / f"{wp.wp_id}_{k}.pdf"
-                ws.ExportAsFixedFormat(0, str(part.resolve()), 0, False, False)
-                parts.append(part)
-                ws.Rows(f"1:{last}").Hidden = False
-                for a, b in _runs(sorted(orig_hidden)):
-                    ws.Rows(f"{a}:{b}").Hidden = True
-            out = out_dir / wp_filename(wp)
-            merged = fitz.open()
-            for p in parts:
-                with fitz.open(p) as d:
-                    merged.insert_pdf(d)
-            merged.save(out)
-            merged.close()
-            _stamp(out, wp, settings)
-            results[wp.wp_id] = out
-            log(f"{wp.wp_id}: {out.name} ({sum(len(r) for r in sheets.values())} rows) — Excel")
-        wb.Close(SaveChanges=False)
-    shutil.rmtree(tmp_dir, ignore_errors=True)
-    return results
+# =============================================================================== Excel (MS Excel)
+def _excel_com_part(xl, wb, doc: BOQDocument, f: SourceFile, uids: list[str], base: Path) -> list[Path]:
+    parts = []
+    for k, (sheet, rows) in enumerate(_sheet_rows(doc, uids).items()):
+        sc = doc.scope(sheet, f.id)
+        ws = wb.Worksheets(sheet)
+        hdr = _header_rows(doc, sheet, f.id)
+        last = max([sc.last_row] + rows)
+        orig_hidden = set(sc.hidden_rows)
+        show = (set(range(min(hdr), max(hdr) + 1)) if hdr else set()) | set(rows)
+        ws.Rows(f"1:{last}").Hidden = True
+        for a, b in _runs([r for r in show if r not in orig_hidden]):
+            ws.Rows(f"{a}:{b}").Hidden = False
+        with contextlib.suppress(Exception):
+            xl.PrintCommunication = False
+        ps = ws.PageSetup
+        ps.PrintArea = f"${get_column_letter(sc.first_col)}$1:${get_column_letter(sc.last_col)}${last}"
+        if hdr:
+            ps.PrintTitleRows = f"${min(hdr)}:${max(hdr)}"
+        ps.Zoom = False
+        ps.FitToPagesWide = 1
+        ps.FitToPagesTall = False
+        with contextlib.suppress(Exception):
+            xl.PrintCommunication = True
+        ws.ResetAllPageBreaks()
+        part = base.with_name(f"{base.stem}_{k}.pdf")
+        ws.ExportAsFixedFormat(0, str(part.resolve()), 0, False, False)
+        parts.append(part)
+        ws.Rows(f"1:{last}").Hidden = False
+        for a, b in _runs(sorted(orig_hidden)):
+            ws.Rows(f"{a}:{b}").Hidden = True
+    return parts
 
 
-def render_excel_html(doc: BOQDocument, plan: Plan, out_dir: Path, settings: Settings, log: Log) -> dict[str, Path]:
+# =============================================================================== Excel (HTML fallback)
+def _excel_html_part(doc: BOQDocument, f: SourceFile, uids: list[str], wp: WorkPackage, out: Path,
+                     settings: Settings, wb_cache: dict) -> Path:
     import openpyxl
 
-    wb = openpyxl.load_workbook(doc.work_path, data_only=True)
+    if f.id not in wb_cache:
+        wb_cache[f.id] = openpyxl.load_workbook(f.work_path, data_only=True)
+    wb = wb_cache[f.id]
     arch = fitz.Archive(settings.font_dir)
-    results = {}
-    for wp, sheets in _excel_jobs(doc, plan):
-        parts = [f"<h3>{html.escape(wp.wp_id)} — {html.escape(wp.name_en)} {html.escape(wp.name_ar)}</h3>"]
-        max_cols = 1
-        for sheet, rows in sheets.items():
-            sc = doc.scope(sheet)
-            ws = wb[sheet]
-            hdr = _header_rows(doc, sheet)
-            show = sorted(((set(range(min(hdr), max(hdr) + 1)) if hdr else set()) | set(rows)) - set(sc.hidden_rows))
-            cols = [c for c in range(sc.first_col, sc.last_col + 1) if c not in set(sc.hidden_cols)]
-            max_cols = max(max_cols, len(cols))
-            parts.append(_sheet_table_html(ws, show, cols, set(hdr), sc.rtl or _looks_rtl(ws, show, cols)))
-        out = out_dir / wp_filename(wp)
-        css = (f"@font-face {{font-family: f; src: url({settings.font_file});}} "
-               "* {font-family: f;} h3 {font-size: 11pt; margin: 0 0 6px 0;} "
-               "table {border-collapse: collapse; width: 100%; margin-bottom: 10px;} "
-               "td {border: 0.5px solid #777; padding: 2px 3px; font-size: 7pt; vertical-align: top;} "
-               "tr.h td {background: #e8e8e8; font-weight: bold; text-align: center;}")
-        story = fitz.Story(html="".join(parts), user_css=css, archive=arch)
-        paper = fitz.paper_rect("a4-l" if max_cols > 5 else "a4")
-        where = paper + (24, 30, -24, -24)
-        writer = fitz.DocumentWriter(str(out))
-        more = 1
-        while more:
-            dev = writer.begin_page(paper)
-            more, _ = story.place(where)
-            story.draw(dev)
-            writer.end_page()
-        writer.close()
-        _stamp(out, wp, settings)
-        results[wp.wp_id] = out
-        log(f"{wp.wp_id}: {out.name} — HTML renderer")
-    return results
+    title = f"{wp.wp_id} — {wp.name_en} {wp.name_ar}" + (f" · {f.label}" if doc.multi_file else "")
+    parts = [f"<h3>{html.escape(title)}</h3>"]
+    max_cols = 1
+    for sheet, rows in _sheet_rows(doc, uids).items():
+        sc = doc.scope(sheet, f.id)
+        ws = wb[sheet]
+        hdr = _header_rows(doc, sheet, f.id)
+        show = sorted(((set(range(min(hdr), max(hdr) + 1)) if hdr else set()) | set(rows)) - set(sc.hidden_rows))
+        cols = [c for c in range(sc.first_col, sc.last_col + 1) if c not in set(sc.hidden_cols)]
+        max_cols = max(max_cols, len(cols))
+        parts.append(_sheet_table_html(ws, show, cols, set(hdr), sc.rtl or _looks_rtl(ws, show, cols)))
+    css = (f"@font-face {{font-family: f; src: url({settings.font_file});}} "
+           "* {font-family: f;} h3 {font-size: 11pt; margin: 0 0 6px 0;} "
+           "table {border-collapse: collapse; width: 100%; margin-bottom: 10px;} "
+           "td {border: 0.5px solid #777; padding: 2px 3px; font-size: 7pt; vertical-align: top;} "
+           "tr.h td {background: #e8e8e8; font-weight: bold; text-align: center;}")
+    story = fitz.Story(html="".join(parts), user_css=css, archive=arch)
+    paper = fitz.paper_rect("a4-l" if max_cols > 5 else "a4")
+    where = paper + (24, 30, -24, -24)
+    writer = fitz.DocumentWriter(str(out))
+    more = 1
+    while more:
+        dev = writer.begin_page(paper)
+        more, _ = story.place(where)
+        story.draw(dev)
+        writer.end_page()
+    writer.close()
+    return out
 
 
 def _looks_rtl(ws, rows, cols) -> bool:
@@ -181,7 +165,7 @@ def _looks_rtl(ws, rows, cols) -> bool:
 def _sheet_table_html(ws, rows: list[int], cols: list[int], header_rows: set[int], rtl: bool) -> str:
     shown = set(rows)
     colset = set(cols)
-    merge_top: dict[tuple[int, int], tuple[int, int]] = {}
+    merge_top: dict[tuple[int, int], tuple[int, int, int, int]] = {}
     covered: set[tuple[int, int]] = set()
     for mr in ws.merged_cells.ranges:
         first_vis_row = next((r for r in range(mr.min_row, mr.max_row + 1) if r in shown), None)
@@ -235,35 +219,29 @@ def _sheet_table_html(ws, rows: list[int], cols: list[int], header_rows: set[int
 
 
 # ================================================================================= PDF
-def render_pdf_crops(doc: BOQDocument, plan: Plan, out_dir: Path, settings: Settings, log: Log) -> dict[str, Path]:
-    src = fitz.open(doc.work_path)
+def _pdf_part(doc: BOQDocument, f: SourceFile, uids: list[str], out: Path) -> Path:
+    src = fitz.open(f.work_path)
     rmap = doc.row_map()
-    order = {r.uid: i for i, r in enumerate(doc.rows)}
-    scope = doc.scope("pdf")
-    content_rows = [r for r in doc.rows if r.role not in ("header", "blank")]
+    file_rows = [r for r in doc.rows if r.ref.file == f.id]
+    order = {r.uid: i for i, r in enumerate(file_rows)}
+    scope = doc.scope("pdf", f.id)
+    content_rows = [r for r in file_rows if r.role not in ("header", "blank")]
     pos = {r.uid: i for i, r in enumerate(content_rows)}
-    results = {}
-    for wp in plan.work_packages:
-        uids = [u for u in snapshot_rows(doc, wp) if u in pos]
-        uids.sort(key=lambda u: order[u])
-        # contiguous runs (in reading order, same page) -> one clip each
-        clips: list[tuple[int, float, float]] = []
-        prev_pos = None
-        for u in uids:
-            r = rmap[u]
-            pg, (x0, y0, x1, y1) = r.ref.page, r.ref.bbox
-            if clips and prev_pos is not None and pos[u] == prev_pos + 1 and clips[-1][0] == pg:
-                p, a, b = clips[-1]
-                clips[-1] = (p, min(a, y0), max(b, y1))
-            else:
-                clips.append((pg, y0, y1))
-            prev_pos = pos[u]
-        out = out_dir / wp_filename(wp)
-        _compose(src, clips, scope, out)
-        _stamp(out, wp, settings)
-        results[wp.wp_id] = out
-        log(f"{wp.wp_id}: {out.name} ({len(clips)} region(s)) — PDF crop")
-    return results
+    uids = sorted((u for u in uids if u in pos), key=lambda u: order[u])
+    # contiguous runs (in reading order, same page) -> one clip each
+    clips: list[tuple[int, float, float]] = []
+    prev_pos = None
+    for u in uids:
+        r = rmap[u]
+        pg, (x0, y0, x1, y1) = r.ref.page, r.ref.bbox
+        if clips and prev_pos is not None and pos[u] == prev_pos + 1 and clips[-1][0] == pg:
+            p, a, b = clips[-1]
+            clips[-1] = (p, min(a, y0), max(b, y1))
+        else:
+            clips.append((pg, y0, y1))
+        prev_pos = pos[u]
+    _compose(src, clips, scope, out)
+    return out
 
 
 def _compose(src, clips, scope, out: Path) -> None:
@@ -271,7 +249,6 @@ def _compose(src, clips, scope, out: Path) -> None:
     W, H = src[0].rect.width, src[0].rect.height
     margin, top = 20, 22
     page, y = None, 0.0
-    last_hdr_page = None
 
     def extent(pg):
         ext = scope.page_extents.get(pg) or scope.page_extents.get(str(pg))
@@ -289,16 +266,14 @@ def _compose(src, clips, scope, out: Path) -> None:
         return k, scope.page_headers.get(k) or scope.page_headers.get(str(k))
 
     def new_page(pg):
-        nonlocal page, y, last_hdr_page
+        nonlocal page, y
         page = dst.new_page(width=W, height=H)
         y = top
         h = header_for(pg)
         if h:
             hp, hb = h
             x0, x1 = extent(hp)
-            clip = fitz.Rect(x0, hb[1] - 3, x1, hb[3] + 3)
-            place(hp, clip)
-            last_hdr_page = hp
+            place(hp, fitz.Rect(x0, hb[1] - 3, x1, hb[3] + 3))
 
     def place(pg, clip):
         nonlocal y
@@ -330,14 +305,49 @@ def _compose(src, clips, scope, out: Path) -> None:
 # ============================================================================ dispatch
 def render_all(doc: BOQDocument, plan: Plan, out_dir: Path, settings: Settings, log: Log) -> dict[str, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
-    if doc.kind == "pdf":
-        return render_pdf_crops(doc, plan, out_dir, settings, log)
+    tmp = out_dir / "_parts"
+    tmp.mkdir(exist_ok=True)
     mode = settings.excel_renderer
-    if mode in ("auto", "excel"):
-        try:
-            return render_excel_com(doc, plan, out_dir, settings, log)
-        except Exception as e:  # noqa: BLE001
-            if mode == "excel":
-                raise
-            log(f"Excel rendering unavailable ({e}); using the built-in HTML renderer.")
-    return render_excel_html(doc, plan, out_dir, settings, log)
+    has_excel = any(f.kind == "excel" for f in doc.file_list())
+    results: dict[str, Path] = {}
+    with contextlib.ExitStack() as stack:
+        xl = None
+        if has_excel and mode in ("auto", "excel"):
+            try:
+                from ..excel_com import excel_app
+                xl = stack.enter_context(excel_app())
+            except Exception as e:  # noqa: BLE001
+                if mode == "excel":
+                    raise
+                log(f"Excel rendering unavailable ({e}); using the built-in HTML renderer.")
+        com_books: dict[str, object] = {}
+        html_books: dict[str, object] = {}
+        for wp in plan.work_packages:
+            pieces: list[Path] = []
+            for k, (f, uids) in enumerate(_file_parts(doc, wp)):
+                base = tmp / f"{wp.wp_id}_{k}.pdf"
+                if f.kind == "pdf":
+                    pieces.append(_pdf_part(doc, f, uids, base))
+                elif xl is not None:
+                    if f.id not in com_books:
+                        com_books[f.id] = xl.Workbooks.Open(str(Path(f.work_path).resolve()), UpdateLinks=0, ReadOnly=True)
+                    pieces += _excel_com_part(xl, com_books[f.id], doc, f, uids, base)
+                else:
+                    pieces.append(_excel_html_part(doc, f, uids, wp, base, settings, html_books))
+            out = out_dir / wp_filename(wp)
+            merged = fitz.open()
+            for p in pieces:
+                with fitz.open(p) as d:
+                    merged.insert_pdf(d)
+            if merged.page_count == 0:
+                merged.new_page()
+            merged.save(out)
+            merged.close()
+            _stamp(out, wp, settings)
+            results[wp.wp_id] = out
+            log(f"{wp.wp_id}: {out.name} ({len(pieces)} part(s))")
+        for wb in com_books.values():
+            with contextlib.suppress(Exception):
+                wb.Close(SaveChanges=False)
+    shutil.rmtree(tmp, ignore_errors=True)
+    return results

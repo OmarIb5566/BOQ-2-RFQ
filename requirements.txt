@@ -4,5 +4,6 @@ pandas>=2.0
 streamlit>=1.40
 pydantic>=2.6
 requests>=2.31
+lxml>=5.0          # RFQ template filling (keeps Word's XML namespaces intact)
 xlrd>=2.0          # .xls fallback when Microsoft Excel is not installed
 pywin32>=306; sys_platform == "win32"   # Excel automation (exact-look snapshots, .xls/.xlsb conversion)

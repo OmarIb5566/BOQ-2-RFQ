@@ -168,6 +168,17 @@ class _Parent:
     texts: list[str]
     has_children: bool = False
     raw_no: str = ""
+    child_prefix: Optional[str] = None   # numbering level of its children when they are siblings of the parent no.
+
+    def adopts(self, key: str) -> bool:
+        """Leaf numbered as a child (3 → 3.1) or, in BOQs that reuse the parent's level for its lines
+        (2.8.1 'excavation' → 2.8.1, 2.8.2 …), as a sibling continuing the same run."""
+        if is_child(key, self.base):
+            return True
+        prefix = key.rsplit(".", 1)[0] if "." in key else None
+        if self.child_prefix is not None:
+            return prefix == self.child_prefix
+        return self.base is not None and prefix is not None and (key == self.base or prefix == self.base.rsplit(".", 1)[0])
 
     @property
     def text(self) -> str:
@@ -192,7 +203,8 @@ def build_structure(rows: list[Row], scope_prefix: str, default_title: str, shee
 
     cur = new_section(default_title, [])
     parent: Optional[_Parent] = None
-    headings: list[tuple[int, str, str]] = []   # (level, uid, text)
+    headings: list[tuple[int, list[str], str]] = []   # (level, row uids, text)
+    by_uid = {r.uid: r for r in rows}
     last_kind = None
     last_leaf: Optional[Item] = None
 
@@ -231,9 +243,15 @@ def build_structure(rows: list[Row], scope_prefix: str, default_title: str, shee
             letter_sub = bool(LETTER_SUB_RE.match(raw_no)) if raw_no else False
             ctx_rows: list[str] = []
             ptext = ""
-            if parent and (not key or parent.base is None or is_child(key, parent.base) or letter_sub):
+            sibling_run = (parent is not None and key and parent.base is not None and not is_child(key, parent.base)
+                           and len(n) < 80          # a short sub-item line; a full description stands alone
+                           and (parent.child_prefix is not None or last_kind in ("parent", "continuation"))
+                           and parent.adopts(key))
+            if parent and (not key or parent.base is None or is_child(key, parent.base) or letter_sub or sibling_run):
                 ctx_rows, ptext = list(parent.rows), parent.text
                 parent.has_children = True
+                if sibling_run and parent.child_prefix is None:
+                    parent.child_prefix = key.rsplit(".", 1)[0]
             else:
                 parent = None
                 if not key and last_leaf is not None and last_kind == "leaf" and len(n) < 35:
@@ -251,7 +269,7 @@ def build_structure(rows: list[Row], scope_prefix: str, default_title: str, shee
                 rate=row.fields.get("rate", "").strip(),
                 total=row.fields.get("total", "").strip(),
                 row_uids=[row.uid],
-                context_row_uids=[h[1] for h in headings] + ctx_rows,
+                context_row_uids=[u for h in headings for u in h[1]] + ctx_rows,
                 parent_row_uids=ctx_rows,
             )
             row.role = "leaf"
@@ -262,6 +280,15 @@ def build_structure(rows: list[Row], scope_prefix: str, default_title: str, shee
 
         # ---- descriptive (non-priced) row
         if key and not LETTER_SUB_RE.match(raw_no):
+            if parent is not None and not parent.has_children and parent.base is not None:
+                # a numbered description with no priced lines of its own is a group title
+                # ("2.8 قسم 02815 النوافير") → heading for what follows, not an orphan
+                lvl = 1 if L1_RE.search(norm(parent.texts[0])) else 3
+                while headings and headings[-1][0] >= lvl:
+                    headings.pop()
+                headings.append((lvl, list(parent.rows), parent.text.strip()))
+                for u in parent.rows:
+                    by_uid[u].role = "heading"
             parent = _Parent(base=parent_base(key), rows=[row.uid], texts=[row.text], raw_no=raw_no)
             row.role, last_kind = "parent", "parent"
             continue
@@ -279,7 +306,7 @@ def build_structure(rows: list[Row], scope_prefix: str, default_title: str, shee
         level = 1 if L1_RE.search(n) else 2
         while headings and headings[-1][0] >= level:
             headings.pop()
-        headings.append((level, row.uid, row.text.strip()))
+        headings.append((level, [row.uid], row.text.strip()))
         parent = None
         row.role, last_kind = "heading", "heading"
 

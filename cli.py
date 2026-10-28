@@ -3,6 +3,8 @@
     python cli.py "BOQ.xlsx"                 # interactive approve/deny for special cases
     python cli.py "BOQ.pdf" --approve-all    # non-interactive
     python cli.py "BOQ.xls" --deny-all --no-llm
+    python cli.py Structural.xlsx Architectural.pdf Landscape.xlsx --approve-all   # one project, several BOQs
+    python cli.py "Project BOQs.zip" --approve-all
 """
 from __future__ import annotations
 
@@ -18,7 +20,7 @@ def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description="Cut a BOQ into work-package PDFs following the company flowchart.")
-    ap.add_argument("file", type=Path)
+    ap.add_argument("files", type=Path, nargs="+", help="BOQ files (Excel / PDF) and/or .zip archives of them")
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--approve-all", action="store_true")
     g.add_argument("--deny-all", action="store_true")
@@ -33,7 +35,7 @@ def main() -> int:
     if args.model:
         s.model = args.model
     agent = BOQAgent(s, log=lambda m: print("  ·", m))
-    session = agent.analyze(args.file)
+    session = agent.analyze(args.files)
 
     doc = session.document
     items = doc.item_map()

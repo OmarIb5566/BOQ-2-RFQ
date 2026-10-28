@@ -190,14 +190,16 @@ def _intervals(field_x: dict[str, float], rules: list[float], width: float) -> l
     return out
 
 
-def read_pdf(path: Path, doc_id: str, source_name: str, settings, log: Callable[[str], None] = print) -> BOQDocument:
+def read_pdf(path: Path, doc_id: str, source_name: str, settings, log: Callable[[str], None] = print,
+             file_id: str = "") -> BOQDocument:
+    pre = f"{file_id}." if file_id else ""
     pdf = fitz.open(path)
     doc = BOQDocument(doc_id=doc_id, filename=source_name, source_path=str(path), work_path=str(path), kind="pdf")
     pages = [_page_words(p, settings, log) for p in pdf]
     if _fix_reversed(pages):
         log("Arabic text in this PDF is stored in visual order — reversed to logical order.")
 
-    scope = TableScope(name="pdf", kind="pdf")
+    scope = TableScope(name="pdf", kind="pdf", file=file_id)
     rows: list[Row] = []
     intervals: Optional[list[tuple[float, float, str]]] = None
     initial_title = ""
@@ -225,8 +227,8 @@ def read_pdf(path: Path, doc_id: str, source_name: str, settings, log: Callable[
                 if not scope.header_labels:
                     scope.header_labels = dict(header.labels)
                     scope.field_columns = {f: i for i, f in enumerate(FIELDS) if f in field_x}
-                hu = f"P{pno}H"
-                doc.rows.append(Row(uid=hu, ref=SourceRef(page=pno, bbox=hb), text=" ".join(
+                hu = f"{pre}P{pno}H"
+                doc.rows.append(Row(uid=hu, ref=SourceRef(file=file_id, page=pno, bbox=hb), text=" ".join(
                     t for ln in h_lines for t in [_join(ln)]), role="header"))
                 scope.header_row_uids.append(hu)
                 for ln in h_lines:
@@ -271,7 +273,7 @@ def read_pdf(path: Path, doc_id: str, source_name: str, settings, log: Callable[
                 prev.cells = [prev.text]
                 prev_y1 = bbox[3]
                 continue
-            row = Row(uid=f"P{pno}L{li}", ref=SourceRef(page=pno, bbox=bbox),
+            row = Row(uid=f"{pre}P{pno}L{li}", ref=SourceRef(file=file_id, page=pno, bbox=bbox),
                       cells=[fields.get(f, "") if f != "description" else desc for f in FIELDS],
                       fields=fields, text=desc)
             rows.append(row)
@@ -280,7 +282,9 @@ def read_pdf(path: Path, doc_id: str, source_name: str, settings, log: Callable[
     if not found_any_header:
         doc.warnings.append("No BOQ table header (Item / Description / Unit / Qty …) was found in the PDF.")
         return doc
-    sections, items = build_structure(rows, "P", initial_title or Path(source_name).stem, None)
+    sections, items = build_structure(rows, f"{pre}P", initial_title or Path(source_name).stem, None)
+    for sec in sections:
+        sec.file_id = file_id
     doc.rows.extend(rows)
     doc.sections, doc.items = sections, items
     doc.scopes.append(scope)

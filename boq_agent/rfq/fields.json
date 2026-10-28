@@ -1,0 +1,31 @@
+{
+  "notes": [
+    "Every (…) or […] placeholder in the RFQ template is a user-defined field. Fields are discovered from the template itself, so adding a new placeholder to the Word file adds a new field; this file only says what a field means.",
+    "scope: project = one value for every RFQ of the BOQ; package = one value per work package; supplier = one value per RFQ letter (one letter per supplier).",
+    "detect: what the agent may auto-fill. 'wp_name' = the work-package name produced by the packaging step; 'project_name' / 'project_location' / 'owner' = read from the BOQ header (only with an explicit label, verbatim, cross-checked); 'same_as:<Field>' = copies another field. Auto-filled values always need the user's approval.",
+    "Field names are matched case-insensitively; unknown fields default to scope 'project' with no detection (the user types them)."
+  ],
+  "fields": {
+    "Package Name / Scope of Works": {"scope": "package", "detect": "wp_name", "help": "Work package being tendered"},
+    "Project Name": {"scope": "project", "detect": "project_name"},
+    "Project Location": {"scope": "project", "detect": "project_location"},
+    "Owner Name": {"scope": "project", "detect": "owner", "label": "Project Owner"},
+    "Supplier Name": {"scope": "supplier", "label": "Supplier"},
+    "Date": {"scope": "project", "type": "date", "label": "Submission Deadline"},
+    "Submission Deadline": {"scope": "project", "type": "date", "detect": "same_as:Date", "label": "Deadline in the closing paragraph"}
+  },
+  "date_format": "%d %B %Y",
+
+  "labels": {
+    "project_name": {
+      "with_colon": ["project name", "name of project", "project title", "project", "اسم المشروع", "المشروع", "مشروع"],
+      "prefix_word": ["مشروع"]
+    },
+    "project_location": {
+      "with_colon": ["project location", "project site", "location", "site location", "موقع المشروع", "مكان المشروع", "الموقع", "المكان"]
+    },
+    "owner": {
+      "with_colon": ["project owner", "owner name", "owner", "client name", "client", "employer", "مالك المشروع", "المالك", "الماللك","صاحب العمل", "العميل", "الجهه المالكه", "جهه الاسناد"]
+    }
+  }
+}

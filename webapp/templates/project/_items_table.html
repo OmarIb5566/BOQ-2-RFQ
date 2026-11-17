@@ -1,0 +1,8 @@
+<div class="table-wrap scroll-y" style="max-height:340px; border:1px solid var(--line)">
+<table class="t">
+  <thead><tr><th>Item</th><th>Description</th><th>Unit</th><th class="right">Qty</th></tr></thead>
+  <tbody>
+  {% for r in rows %}<tr><td class="nowrap">{{ r.no }}</td><td class="desc">{{ r.desc }}</td><td>{{ r.unit }}</td><td class="right nowrap">{{ r.qty }}</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>

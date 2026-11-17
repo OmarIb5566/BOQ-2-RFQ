@@ -1,0 +1,63 @@
+{% extends "project/layout.html" %}
+{% block tab %}
+{% if not s.plan.proposals %}
+  <div class="card empty"><div class="big">✓</div><h2>No special cases</h2><p>The flowchart had nothing to ask about in this BOQ.</p>
+  <a class="btn primary" href="{{ url_for('main.tab', run_id=p.run_id, tab='packages') }}">Review the work packages →</a></div>
+{% else %}
+<div class="row between" style="margin-bottom:.5rem">
+  <div>
+    <p class="muted" style="margin:0">These items could be packaged differently. Choose for each case — you can change your mind at any time; packages, documents and RFQs follow.</p>
+  </div>
+  <div class="seg">
+    <a class="{{ 'on' if show == 'all' }}" href="?show=all">All ({{ s.plan.proposals|length }})</a>
+    <a class="{{ 'on' if show == 'pending' }}" href="?show=pending">Open ({{ pending|length }})</a>
+  </div>
+</div>
+{% if pending|length > 1 %}
+<div class="card pad row between" style="margin-bottom:1rem">
+  <span><b>{{ pending|length }}</b> case(s) still open.</span>
+  <div class="row">
+    <button class="btn" data-post="/api/p/{{ p.run_id }}/decide" data-body='{{ {"ids": pending|map(attribute="proposal_id")|list, "decision": "approved"}|tojson }}' data-confirm="Approve all {{ pending|length }} open cases?">✓ Approve all open</button>
+    <button class="btn" data-post="/api/p/{{ p.run_id }}/decide" data-body='{{ {"ids": pending|map(attribute="proposal_id")|list, "decision": "denied"}|tojson }}' data-confirm="Deny all {{ pending|length }} open cases?">✗ Deny all open</button>
+  </div>
+</div>
+{% endif %}
+
+{% for rule, cases in groups.items() %}
+  {% set open_ids = cases|selectattr("decision", "equalto", "pending")|map(attribute="proposal_id")|list %}
+  {% if groups|length > 1 or cases|length > 3 %}
+  <div class="group-head">
+    <h2>{{ rule_titles.get(rule) or cases[0].title_en.split('→')[0] }}</h2>
+    <span class="tag">{{ cases|length }}</span>
+    {% if open_ids|length > 1 %}
+      <span class="grow"></span>
+      <button class="btn sm" data-post="/api/p/{{ p.run_id }}/decide" data-body='{{ {"ids": open_ids, "decision": "approved"}|tojson }}'>✓ Approve these {{ open_ids|length }}</button>
+      <button class="btn sm" data-post="/api/p/{{ p.run_id }}/decide" data-body='{{ {"ids": open_ids, "decision": "denied"}|tojson }}'>✗ Deny these {{ open_ids|length }}</button>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% for c in cases %}
+  <div class="card case {{ c.decision }}">
+    <div class="row between">
+      <h3 style="margin:0">{{ c.title_en }}</h3>
+      <span class="tag {{ 'warn' if c.decision == 'pending' else 'ok' if c.decision == 'approved' else '' }}">{{ {'pending': 'Open', 'approved': 'Approved', 'denied': 'Denied'}[c.decision] }}</span>
+    </div>
+    <p style="margin:.4rem 0">{{ c.message_en }}</p>
+    {% if c.message_ar %}<p class="rtl muted small" style="margin:0">{{ c.message_ar }}</p>{% endif %}
+    <details class="more" data-lazy="{{ url_for('main.case_items', run_id=p.run_id, pid=c.proposal_id) }}" id="items-{{ loop.index }}-{{ rule }}">
+      <summary>Show the {{ c.item_uids|length }} item(s)</summary><div class="lazy-body"></div>
+    </details>
+    <div class="choices">
+      <button class="btn {{ 'picked' if c.decision == 'approved' }}" data-post="/api/p/{{ p.run_id }}/decide"
+              data-body='{{ {"ids": [c.proposal_id], "decision": "approved"}|tojson }}'>✓&nbsp; {{ c.approve_label }}</button>
+      <button class="btn {{ 'picked' if c.decision == 'denied' }}" data-post="/api/p/{{ p.run_id }}/decide"
+              data-body='{{ {"ids": [c.proposal_id], "decision": "denied"}|tojson }}'>✗&nbsp; Keep as {{ c.deny_label }}</button>
+    </div>
+  </div>
+  {% endfor %}
+{% endfor %}
+{% if not pending %}
+<div class="banner ok" style="margin-top:1rem">All cases decided. <a href="{{ url_for('main.tab', run_id=p.run_id, tab='packages') }}">Review the work packages →</a></div>
+{% endif %}
+{% endif %}
+{% endblock %}

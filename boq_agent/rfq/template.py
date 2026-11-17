@@ -52,13 +52,16 @@ def discover_fields(template: Path) -> list[str]:
     return list(seen)
 
 
-def preview(template: Path, values: dict[str, str]) -> list[str]:
+def preview(template: Path, values: dict[str, str], drop_lines: tuple[str, ...] = ()) -> list[str]:
     """Body paragraphs as plain text with the values substituted (for the on-screen review)."""
     vals = {k.lower(): v for k, v in values.items() if v and str(v).strip()}
+    drop = {_para_key(x) for x in drop_lines if x.strip()}
     root = etree.fromstring(_parts(Path(template))["word/document.xml"])
     out = []
     for p in root.iter(f"{W}p"):
         text = "".join(t.text or "" for t in p.iter(f"{W}t"))
+        if text.strip() and _para_key(text) in drop:
+            continue
         out.append(FIELD_RE.sub(lambda m: vals.get(field_name(m.group(1) or m.group(2)).lower(), m.group(0)), text))
     return out
 
@@ -96,10 +99,28 @@ def _fill_paragraph(ts: list, values: dict[str, str]) -> int:
     return len(spans)
 
 
-def fill_template(template: Path, out: Path, values: dict[str, str]) -> int:
+def _para_key(text: str) -> str:
+    return re.sub(r"[\s.:;،-]+", " ", text or "").strip().lower()
+
+
+def _drop_paragraphs(root, drop: set[str]) -> int:
+    """Remove whole paragraphs whose text is exactly one of `drop` (e.g. the 'Drawings' attachment line of a
+    package that has no drawings). Only exact, complete lines are removed — never part of a sentence."""
+    n = 0
+    for p in list(root.iter(f"{W}p")):
+        text = "".join(t.text or "" for t in p.iter(f"{W}t"))
+        if text.strip() and _para_key(text) in drop and p.getparent() is not None:
+            p.getparent().remove(p)
+            n += 1
+    return n
+
+
+def fill_template(template: Path, out: Path, values: dict[str, str], drop_lines: tuple[str, ...] = ()) -> int:
     """Write a copy of the template with fields replaced. Blank values leave the placeholder as-is.
+    drop_lines: complete paragraphs to leave out (attachments this package does not have).
     Returns the number of placeholders filled."""
     vals = {k.lower(): v for k, v in values.items() if v and str(v).strip()}
+    drop = {_para_key(x) for x in drop_lines if x.strip()}
     parts = _parts(Path(template))
     filled = 0
     for name, data in list(parts.items()):
@@ -107,6 +128,8 @@ def fill_template(template: Path, out: Path, values: dict[str, str]) -> int:
             continue
         root = etree.fromstring(data)
         n = sum(_fill_paragraph(ts, vals) for ts in _paragraph_texts(root))
+        if drop and name == "word/document.xml":
+            n += _drop_paragraphs(root, drop)
         if n:
             parts[name] = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
             filled += n

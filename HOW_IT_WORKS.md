@@ -2,6 +2,8 @@
 
 BOQ2RFQ reads a Bill of Quantities (Excel or PDF, Arabic or English) and cuts it into **work packages (WPs)** following the company packaging flowchart. It asks the user to approve or deny every flowchart special case (the ovals). It then exports one PDF snapshot per work package, showing the original BOQ rows with **all columns**, plus a JSON hand-off file. Finally it drafts the **RFQ letters** for those packages from the company Word template (§6).
 
+**Specifications and drawings are optional.** Upload them with the BOQ (BOQ only, BOQ + specs, BOQ + drawings, or all three) and every work package also gets **its own spec sections and its own drawing sheets** (whole sheets), attached to its RFQ (§10).
+
 It runs fully locally. The reasoning model is **Gemma (`gemma4:e4b`) through Ollama**, prompted to act as a senior construction manager / QS who is fluent in Arabic construction terminology.
 
 ---
@@ -10,15 +12,19 @@ It runs fully locally. The reasoning model is **Gemma (`gemma4:e4b`) through Oll
 
 | How | Command |
 |---|---|
-| Web UI (Streamlit) | double-click `run_app.bat` (it creates `.venv` on the first run), or `.venv\Scripts\streamlit run BOQ2RFQ.py` |
+| Web app, this PC | double-click `run_app.bat` (it creates `.venv` on the first run) → http://localhost:8080 |
+| Web app for the team | double-click `run_for_team.bat` (= `server.py --lan`); colleagues open `http://<this PC>:8080` |
+| | `server.py --port 9000 --threads 16 --no-browser` |
 | Command line | `.venv\Scripts\python cli.py "BOQ.xlsx"` (asks Approve/Deny for each special case) |
 | | several BOQs of one project: `cli.py Structural.xlsx Architectural.pdf Landscape.xlsx`, or a zip: `cli.py "Project BOQs.zip"` |
 | | `… --approve-all` / `--deny-all` (non-interactive), `--no-llm` (keyword-only), `--renderer excel\|html`, `--model <name>` |
+| | with specs / drawings: `cli.py BOQ.xlsx "Masonry Specs.pdf" "Plans DWG.pdf" "scan.jpg"` · `--vision-model <name>` · `--force` (ignore the caches) |
 
 **Requirements**
 - **Ollama** running with `gemma4:e4b` pulled (`ollama pull gemma4:e4b`). Without it the agent still runs in a less accurate *keyword-only* mode.
 - **Microsoft Excel** (optional, Windows). Used to convert `.xls`/`.xlsb` and to print snapshots that look exactly like the original. Without Excel, `.xls` is read values-only (xlrd) and snapshots use a built-in HTML renderer.
 - **Tesseract OCR** with Arabic data (optional). Used only for scanned PDFs that have no text layer.
+- **`qwen2.5vl:7b`** in Ollama (optional, `ollama pull qwen2.5vl:7b`). The vision model, used **only** for drawing sheets / spec pages without a text layer (scans, photos). Without it, such sheets are listed for manual review.
 
 **Settings** (`boq_agent/config.py`, several can be set as environment variables):
 
@@ -32,13 +38,17 @@ It runs fully locally. The reasoning model is **Gemma (`gemma4:e4b`) through Oll
 | Workspace folder | `./workspace` | `BOQ_WORKSPACE` |
 | Excel renderer | `auto` (Excel if available, else HTML) | `BOQ_EXCEL_RENDERER` |
 | Tesseract folder | `C:\Program Files\Tesseract-OCR` | `TESSERACT_DIR` |
+| Vision model (scanned drawings only) | `qwen2.5vl:7b`, whole sheet at 1800 px, title-block crop at 1400 px, ≤ 900 output tokens | `BOQ_VISION_MODEL` |
 
 ---
 
 ## 2. The pipeline at a glance
 
 ```
- Upload BOQ (.xlsx/.xls/.xlsm/.xlsb/.pdf)
+ Upload BOQ (.xlsx/.xls/.xlsm/.xlsb/.pdf)  [+ optional specs / drawings: PDF, images]
+        │
+        ▼
+ ⓪ SORT ───────────── each file → BOQ / specification / drawing (sheet size, BOQ table, file name, text) — §10.1
         │
         ▼
  ① INGEST ─────────── Excel reader / PDF reader → rows with columns (item no, description, unit, qty, rate, total)
@@ -46,6 +56,9 @@ It runs fully locally. The reasoning model is **Gemma (`gemma4:e4b`) through Oll
         ▼
  ② STRUCTURE ──────── row roles → sections (أبواب / Divisions) → priced items with parent + heading context
         │
+        ▼
+ ②b SPECS & DRAWINGS ─ specs → sections by their SECTION numbers; drawings → sheets (number, title, trade, legend);
+        │              vision model only for sheets without a text layer — §10.2–10.3
         ▼
  ③ DIVISIONS ──────── each section → CSI division (explicit "Division 03" → LLM → keywords)
         │
@@ -56,10 +69,13 @@ It runs fully locally. The reasoning model is **Gemma (`gemma4:e4b`) through Oll
  ⑤ PLAN ───────────── deterministic flowchart engine → work packages + special-case proposals
         │
         ▼
- ⑥ USER REVIEW ────── Approve / Deny each special case; optionally correct divisions or item categories
+ ⑤b MATCH DOCUMENTS ─ sections & sheets → work packages (codes → keywords → sheet type → LLM leftovers) — §10.4
         │
         ▼
- ⑦ EXPORT ─────────── one PDF cut-out per WP + work_packages.json (RFQ hand-off) + ZIP
+ ⑥ USER REVIEW ────── Approve / Deny each special case; optionally correct divisions, item categories, attached docs
+        │
+        ▼
+ ⑦ EXPORT ─────────── per WP: BOQ cut-out + Specs PDF + Drawings PDF; work_packages.json (RFQ hand-off) + ZIP
         │
         ▼
  ⑧ RFQ DRAFTING ───── company Word template → fields auto-filled only when certain → user approves → .docx per supplier
@@ -264,7 +280,7 @@ Every item records `category`, `confidence`, `method` (`llm`, `llm-review`, `key
 
 Re-planning (after any decision or correction) keeps all earlier decisions.
 
-### ⑥ User review (Streamlit UI)
+### ⑥ User review (web app, §11)
 
 The app has two tabs, **Work packages** and **RFQs**, and a step tracker across the top: *Upload BOQ → Decide special cases → Export work packages → Send RFQs*. **↺ New BOQ** starts over. Settings (model, renderer …) come from `config.py` / environment variables and are not shown in the app. The only engine message is a warning when the analysis engine is offline.
 
@@ -380,9 +396,10 @@ Results on the BOQs tested so far:
 
 `workspace/<run_id>/rfq/<WP folder>/` holds:
 - `RFQ - WP-02 Div 04 Masonry - <Supplier>.docx`, one per supplier;
-- `BOQ - WP-02 ….pdf`, the package's BOQ cut-out (the template's "BOQ" attachment).
+- `BOQ - WP-02 ….pdf`, the package's BOQ cut-out (the template's "BOQ" attachment);
+- `WP-02 … - Specs.pdf` and `WP-02 … - Drawings.pdf`, when specifications / drawings were uploaded and matched (§10).
 
-Everything is zipped into `<BOQ name> - RFQs.zip`. Drawings and specifications are not part of the BOQ, so you attach them yourself.
+The template's attachment list (*BOQ / Drawings / Technical Specifications*) follows what is attached: a package without drawings gets a letter without the "Drawings" line, and likewise for specifications. The lines that may be dropped are listed in `rfq/fields.json → attachments`; only those exact, complete lines are removed. Everything is zipped into `<BOQ name> - RFQs.zip`.
 
 ### 6.5 Machine-readable hand-off (`rfq/interface.py`)
 
@@ -397,6 +414,11 @@ Every export also writes `work_packages/work_packages.json`, a list of `RFQPacka
   "name_en": "Div 04: Masonry", "name_ar": "أعمال المباني",
   "division": "04", "division_name": "Masonry",
   "snapshot_pdf": ".../WP-02 Div 04 Masonry.pdf",
+  "spec_pdf": ".../WP-02 Div 04 Masonry - Specs.pdf", "drawings_pdf": ".../WP-02 Div 04 Masonry - Drawings.pdf",
+  "specifications": [{"file": "Blockwork Specs.pdf", "ref": "Section 04200 UNIT MASONRY", "pages": [1, 2, 19],
+                      "method": "code", "reason": "the BOQ cites Section 04200", "confidence": 1.0}],
+  "drawings": [{"file": "Plans DWG.pdf", "ref": "DWG-AR-TH4-FL0-1201 · GROUND FLOORING PATTERN PLAN", "pages": [4],
+                "method": "legend", "reason": "“Trieste Marble …” → Internal Marble / Granite / Stone", "confidence": 0.85}],
   "special_rules": ["R1_EXTERNAL_MARBLE"],  // ovals that shaped this package
   "lines": [{"item_no": "1.1", "description": "<parent> — <item>", "unit": "m2", "quantity": "3,095", "source": "Div04 !5"}]
 }
@@ -418,6 +440,8 @@ Downstream tools should depend only on this contract, never on the BOQ parsing i
 | Add a fixed "heading decides the package" rule | add an entry to `context_rules` |
 | Add a field to the RFQ letter | type it in the Word template as `(Field Name)` or `[Field Name]`; optionally describe it in `rfq/fields.json` (scope, date type, detection) |
 | Teach RFQ detection a new label (e.g. `الاستشاري:`) | the `labels` lists in `rfq/fields.json` |
+| Teach the sorter a file-name word, a sheet type, a trade code or a "this trade always needs these sheets" rule | `knowledge/document_rules.json` (§10) |
+| Make a legend word point to a package | that category's `keywords` in `flowchart_rules.json` (the same keywords serve BOQ items and drawing legends) |
 
 The system prompt, the LLM answer menus, the planner and the UI all pick up the changes on the next run.
 
@@ -427,7 +451,14 @@ The system prompt, the LLM answer menus, the planner and the UI all pick up the 
 
 | File | Responsibility |
 |---|---|
-| `BOQ2RFQ.py` | Streamlit UI |
+| `server.py` | Starts the web app (Waitress, multi-threaded; `--lan` for the team) |
+| `webapp/__init__.py` | Flask app factory: settings, database, store, job queue, blueprints, error pages |
+| `webapp/auth.py` | Sign in / out, first-run admin set-up, user administration, CSRF protection |
+| `webapp/views.py` | Pages (projects, upload, project tabs, package detail, downloads) and JSON actions |
+| `webapp/store.py` | Cached sessions, one-writer-per-project locks, stage + summary for the project index |
+| `webapp/jobs.py` | Background job queue (one worker: GPU and Excel are single resources) with live progress |
+| `webapp/db.py` | SQLite: users, project index, job history (`instance/boq2rfq.db`) |
+| `webapp/templates/`, `webapp/static/` | Pages, one stylesheet (light / dark), one script (no external libraries) |
 | `cli.py` | Command-line runner |
 | `boq_agent/agent.py` | Orchestrator: `analyze()` → `decide()` / corrections → `export()`, session save/load |
 | `boq_agent/config.py` | Settings |
@@ -452,6 +483,15 @@ The system prompt, the LLM answer menus, the planner and the UI all pick up the 
 | `boq_agent/rfq/builder.py` | Prefill (nothing committed) and generation of the letters + ZIP |
 | `boq_agent/rfq/interface.py` | `work_packages.json` hand-off contract |
 | `boq_agent/text_utils.py` | Arabic/English normalisation, keyword matching, inclusion-clause stripping, formatting |
+| `boq_agent/knowledge/document_rules.json` | **Specs & drawings reference data**: file-name hints, sheet types, trades, layout-sheet rules |
+| `boq_agent/docs/sort.py` | What each uploaded file is (BOQ / spec / drawing) |
+| `boq_agent/docs/specs.py` | Spec PDF → sections by the document's own SECTION numbering |
+| `boq_agent/docs/drawings.py` | Drawing PDF / image → sheets (number, title, trade, legend), boilerplate removal |
+| `boq_agent/docs/vision.py` | Vision model for pages without a text layer (transcribe only, cropped, cached) |
+| `boq_agent/docs/match.py` | Sections & sheets → work packages, with method, reason and confidence |
+| `boq_agent/docs/index.py` | Registers the files (duplicates kept once) and builds the index (cached by content) |
+| `boq_agent/docs/export.py` | Specs PDF and Drawings PDF per work package |
+| `boq_agent/docs/common.py` | Content-hash cache (`workspace/_cache`), reference-data loader |
 
 ---
 
@@ -461,3 +501,137 @@ The system prompt, the LLM answer menus, the planner and the UI all pick up the 
 - **Not every BOQ layout is covered.** Header and structure detection handle the usual Egyptian/Gulf layouts. A BOQ with no recognisable header on a sheet is reported as a warning and that sheet is skipped.
 - **Scanned PDFs depend on OCR quality.** Low-resolution scans may mis-map columns.
 - **Without Microsoft Excel, snapshots lose some fidelity.** The HTML renderer reproduces structure and basic styling, but not logos or page headers/footers.
+- **Drawing matching reads words, not pictures.** A sheet is placed by its legend / notes / title text and by its type (e.g. architectural plans always go to masonry and openings). A trade drawn on a sheet but never written on it (no legend entry) is only caught by the sheet-type rules or by the model, so check the *Specs & drawings per package* panel.
+- **Scanned drawings depend on the vision model.** It reads the legend and title block well at 1800 px, but small print can be misread (one test read "STONE CLADDING" as "STONE GLASSING"; the sheet was still matched through "MARBLE"). Such sheets are marked for review.
+
+---
+
+## 10. Specifications & drawings (optional uploads)
+
+The user can upload, with the BOQ, the project's specifications and drawings — any combination. Nothing is required: with the BOQ only, the system works exactly as before and the RFQ letters list only the BOQ. Each work package then gets the **spec sections** and the **whole drawing sheets** that concern it, and both are attached to its RFQ.
+
+The principle is *the expensive model call is the last resort*: whatever the files already contain as text is read as data; the text model is asked only about what nothing else could place; the vision model only looks at pages that have no text at all. On the Project 2 sample (7 spec sections, 15 CAD sheets, 2 vendor-list images) indexing took 11 s, **every section and sheet was placed without a single model question**, and the vision model was called twice — for the two images, which it correctly rejected as "not a drawing".
+
+### 10.1 Sorting the uploads (`docs/sort.py`)
+
+| Evidence (cheapest first) | Result |
+|---|---|
+| Excel file | BOQ |
+| Image file (.png / .jpg / .tif …) | drawing (the vision model confirms it; a vendor list or a photo is set aside as "not a drawing") |
+| PDF page larger than A3 | drawing |
+| BOQ table header on the first pages, or "BOQ / مقايسة" in the name | BOQ |
+| File name: *Specs, Specification, مواصفات* / *DWG, Drawing, Plans, Elevations, لوحات* | spec / drawing |
+| Text: `SECTION 04 20 00`, `PART 1 GENERAL`, `END OF SECTION` → spec; title-block words (Drawing No, Scale, Drawn, Checked) or landscape pages → drawing | spec / drawing |
+
+The same file uploaded twice (same content, e.g. one drawing set saved in two package folders) is read once. A PDF read as a BOQ but containing no BOQ items is re-sorted as a spec or drawing. The sorting is shown in the *Specifications & drawings* panel and can be changed per file (Specification / Drawings / Not used).
+
+### 10.2 Specifications → sections (`docs/specs.py`)
+
+A spec is split by **its own section numbering**, read from the text layer (no model):
+- a heading `SECTION 04 20 00` (title on the same or the next line) starts a section;
+- a running page header (`Section 31 23 00: Excavation & Filling — Page 3 of 10`) assigns its page;
+- pages without either continue the current section;
+- old 5-digit codes (`SECTION 04200 UNIT MASONRY`) and Arabic `القسم` are understood; a page that lists many section numbers (contents page) starts nothing;
+- each section keeps its "Section includes …" sentence.
+
+Scanned spec pages are OCR'd with Tesseract; if that is not installed, the vision model reads only the page-header band (top 14 %) for the section number. Results are cached by file content.
+
+### 10.3 Drawings → sheets (`docs/drawings.py`, `docs/vision.py`)
+
+**CAD-exported PDFs (the usual case) are read from their text layer**, with no model:
+- **Drawing number:** the strongest `DWG-AR-TH4-FL0-1201`-style token (several parts, a trade code, a numeric last part, printed once or twice). Room tags such as `UN2-G-14` score low. If there is none, the short number next to the *Drawing No* label is used.
+- **Title:** a short, large-font line naming a sheet type (… PLAN, ELEVATIONS, SECTION, DETAIL, SCHEDULE, LEGEND).
+- **Type and trade:** from the title and the drawing number's codes (`ELA` = elevation, `AR` = architectural …), listed in `document_rules.json`.
+- **Legend:** the sheet's descriptive lines (material / finish legends, schedules, notes). Lines printed on most sheets of the set (general notes, consultant address, copyright) are removed as boilerplate. A repeated line that names a material is a shared legend and is kept. Note-style sentences ("shall", "do not scale", "i.e. …") are always dropped.
+
+**Sheets without a text layer (scans, photos) go to the vision model (`qwen2.5vl:7b`).** It is told to transcribe, never interpret:
+1. one pass over the whole sheet at 1800 px returns: is it a drawing, the title, the trade, where the title block is, and the legend entries;
+2. a sharper crop of only that title block (1400 px) returns the drawing number and title.
+
+The output is capped at 900 tokens and repeated lines are dropped, because qwen2.5vl got stuck repeating itself on a dense sheet at 1280 px (6 500 tokens, 54 s; at 1800 px it took about 5 s). Every reading is cached by image hash + model + prompt version, and such sheets are marked *to review*.
+
+### 10.4 Matching to work packages (`docs/match.py`)
+
+Each link carries a **method**, a **reason** the user can read, and a **confidence**. The strongest evidence wins:
+
+| | Spec section | Drawing sheet | Confidence |
+|---|---|---|---|
+| 1 | **code** — the package's BOQ items cite the section (`Section 07 22 22`, `قسم 04200`, MasterFormat Div 10 groups) | **drawing ref** — the BOQ cites the drawing number | 1.0 |
+| 2 | **title** — the section title names a package's category (flowchart keywords: *Exterior stone cladding* → marble) | **legend** — a legend / note line names a package's material. Every trade a line names counts (*acrylic paint on cement plaster* → Paint **and** Plaster); words in brackets are qualifiers (*METAL LOUVERS (W/ WOODEN LOOK COAT)* → metal louvers) | 0.9 / 0.85 |
+| 3 | **division** — same CSI division; a general section goes to the division's own package, not to its ovals | **sheet type** — general sheets a trade always needs (`layout_sheets`: architectural plans / elevations / sections → Div 04 masonry; plans, elevations, schedules → Div 08 openings; structural sheets → Div 03 / 05 / 31; MEP sheets → their divisions …) | 0.85 / 0.6 |
+| 4 | **llm** — only for a section or sheet nothing above placed: one short question with the package keys as the only allowed answers (it cannot invent packages), cached by content | same | 0.55 |
+
+A section whose title names a trade with no package in this BOQ is left unattached instead of being forced into the division. One sheet can serve several packages (an elevation goes to masonry, marble, paint, plaster, handrails, louvers …).
+
+Matching runs again after every Approve / Deny and every correction. It is code plus cached answers, so it takes milliseconds. Links point to the stable work-package **key**, not to the WP number.
+
+### 10.5 Review and corrections (UI)
+
+- **Specs & drawings** tab: every uploaded file, how it was sorted and why, with a selector to re-sort it (re-read in the background), plus its sections or sheets, the packages each went to and the reason. Documents attached nowhere are listed, so nothing is silently dropped. Timings and the number of model calls are shown.
+- **Work package page**: the package's attached sections and sheets with the reason for each (⚠ marks a weaker match: sheet type or model), a ✕ to remove one, and a list to add any other. The choice is stored per package key (`session.json → documents.overrides`) and survives re-planning. Changing the documents marks the export as out of date.
+
+### 10.6 Output
+
+Per work package, next to the BOQ cut-out:
+- `WP-02 Div 04 Masonry - Specs.pdf`: the whole pages of its sections, in upload order;
+- `WP-02 Div 04 Masonry - Drawings.pdf`: its whole sheets at vector quality.
+
+Both carry the same top-margin WP stamp. Fonts are subset when stamping; without that, each page carried a full copy of Arial and a 32-page spec grew from 0.6 MB to 18 MB. Both PDFs are in the work-packages ZIP and in each RFQ folder, and listed with page numbers and reasons in `work_packages.json`.
+
+### 10.7 Caching and measurement
+
+- **Cache:** `workspace/_cache/` (spec indexes by file hash; vision readings by image hash + model + prompt version + output cap; matching answers by content + package list + model). A re-uploaded file costs nothing, and `--force` / `Settings.force` ignores the caches.
+- **Logging:** every model call is logged with operation, model, input / output tokens, seconds and load time (`OllamaClient.log`). The run summary is kept in `session.json → documents.stats` (index / spec / drawing seconds, vision calls and tokens, cache hits, sheets read from the text layer vs. by the vision model, links per method, match model calls).
+
+---
+
+## 11. The web app (`webapp/`, `server.py`)
+
+The web app replaced the Streamlit screen, which redrew every widget of the page on each click. On a project with 14 BOQs, 1 287 items and 35 special cases, that made clicks seem to do nothing.
+
+### 11.1 Running it for a team
+
+- **`run_app.bat`** starts it on this PC (http://localhost:8080). **`run_for_team.bat`** also opens it to the office network. Windows asks once to allow Python through the firewall; allow it on private networks.
+- **Server:** Waitress, a production server that runs on Windows, serves the pages with 16 threads, so many people can use it at the same time.
+- **Heavy work goes into one job queue:** analysis, export, re-reading documents, re-classifying a section, detecting RFQ details, writing RFQs and duplicating a project. The queue runs one job at a time, because the GPU (Ollama) and Microsoft Excel are single resources. Everybody keeps working meanwhile. The **Jobs** menu shows what runs and who is waiting; each project shows its own progress bar; a toast says when a job finishes.
+- **One project, one writer.** Every change to a project runs under that project's lock. Changes to a project with a running job are refused politely ("please wait — Export is running") instead of overwriting each other. Saves are atomic (write, then rename).
+- **Speed:** a project is parsed once and kept in memory until it changes. Pages render in 0.01–0.1 s, even with 1 287 items. A decision on that project takes about 0.2–2 s, and approving 29 cases at once 0.2 s.
+- **Data:** the projects stay in `workspace/<run_id>/` (unchanged format, so the command line and the web app share them). Users, the project index and job history are in `instance/boq2rfq.db` (SQLite). The cookie secret is in `instance/secret.key`. Both are git-ignored.
+
+### 11.2 Accounts
+
+- The **first visit** creates the administrator account. Projects already in `workspace/` are imported into it, so every earlier run appears in the list.
+- **Administrators** add users (with a first password), reset passwords, disable accounts, change roles, and see every project. Users change their own name and password under *Account*.
+- **Sharing:** a project is shared with the team by default (anyone can open and edit it); the owner can make it private. Only the owner or an administrator can delete it or change its sharing.
+- **Security:** passwords are stored hashed; a CSRF token protects every change; downloads cannot leave the project folder. "Keep me signed in" lasts 30 days.
+
+### 11.3 Projects
+
+The **Projects** page lists every project with its stage (Analyzing / Failed / Decisions needed / Ready to export / Exported / RFQs drafted), a progress strip, what it contains, its owner and when it last changed. You can:
+- search it (press `/`), filter it by stage, and switch between All / Mine / ★ Starred / 🗑 Trash;
+- **open** a project at any stage: it opens on the step that needs you;
+- **rename** it, **star** it, **share** it or make it private;
+- **duplicate** it, to try a different packaging without touching the original (outputs are not copied);
+- **delete** it to the trash and **restore** it from there.
+
+A failed analysis shows its reason and a **Try again** button (the uploaded files are kept).
+
+### 11.4 New project
+
+Drag the files onto the page (BOQs, specs, drawings, or a zip), name the project, choose whether to use the AI engine and whether to share it, and upload. The analysis runs in the background: you can leave the page, and the project opens on the right step when it is done.
+
+### 11.5 Inside a project
+
+A header shows the editable name, the stage, owner and last editor, the next action ("Decide 5 cases →", "Export →", "RFQs →") and a stepper (Upload → Special cases → Review packages → Export → RFQ letters). Every step can be opened at any time, and **every change is saved immediately**: a past project is edited, never re-run. If something changes after an export, a banner says the export is out of date.
+
+| Tab | What you can do |
+|---|---|
+| **Overview** | Counts, every file with how it was read, things worth a look (low-confidence items, warnings), recent jobs |
+| **Special cases** | Approve / Deny each case; **Approve / Deny all open**, or all of one kind (e.g. the 29 "same package in several BOQs" cases); show a case's items on demand; filter All / Open; change a decision later |
+| **Work packages** | Filter; click a package to open it: **rename it** (used in its files and RFQ letters; the flowchart name can be restored), see its items, **add / remove spec sections and drawing sheets** with the reason for each, open its PDFs |
+| **Items** | All items, searchable, filtered by category or low confidence; click a category to move an item (its variants move with it). *Sections & divisions*: change a section's division (re-classified in the background) |
+| **Specs & drawings** | Every uploaded file and how it was sorted (change it: Specification / Drawings / Not used); its sections or sheets, each with the packages it went to and why; documents not attached anywhere |
+| **Export** | Export (or export again), download everything as one ZIP, open each package's BOQ / Specs / Drawings PDF |
+| **RFQs** | Project details (values found in the BOQ show where they were found and need a *Confirm*; suggestions are one click), suppliers per package as tags, with *add this supplier to all selected*, choose which packages get letters, a live **letter preview** per package, a per-project **Word template**, *Generate*, and download all or any single letter. Everything is **saved as you type**, so the form is still there on your next visit |
+| **Activity** | Every job (who, when, result) and the agent's log, searchable |
+

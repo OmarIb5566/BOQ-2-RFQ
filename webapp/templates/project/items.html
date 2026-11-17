@@ -1,0 +1,54 @@
+{% extends "project/layout.html" %}
+{% block tab %}
+<script type="application/json" id="cat-names">{{ cat_names.items()|list|tojson }}</script>
+<div class="seg" style="margin-bottom:1rem">
+  <a class="{{ 'on' if request.args.get('view') != 'sections' }}" href="?">Items ({{ items|length }})</a>
+  <a class="{{ 'on' if request.args.get('view') == 'sections' }}" href="?view=sections">Sections &amp; divisions ({{ sections|length }})</a>
+</div>
+
+{% if request.args.get('view') == 'sections' %}
+<p class="muted">Each BOQ section belongs to a CSI division. Changing one re-classifies that section's items (in the background).</p>
+<div class="row" style="margin-bottom:.75rem"><div class="search" style="width:340px"><input type="search" data-filter="#sec-table" placeholder="Filter sections …"></div></div>
+<div class="card table-wrap scroll-y">
+<table class="t" id="sec-table">
+  <thead><tr><th>Section</th>{% if multi %}<th>BOQ</th>{% endif %}<th class="right">Items</th><th style="width:300px">Division</th></tr></thead>
+  <tbody>
+  {% for x in sections %}
+  <tr>
+    <td>{{ x.title }}{% if x.method %} <span class="faint small">({{ x.method }})</span>{% endif %}</td>
+    {% if multi %}<td class="small muted">{{ x.file }}</td>{% endif %}
+    <td class="right">{{ x.n }}</td>
+    <td><select class="sm" onchange="post('/api/p/{{ p.run_id }}/division', {section_uid: {{ x.uid|tojson|forceescape }}, division: this.value})">
+      {% for code, label in divs %}<option value="{{ code }}" {{ 'selected' if code == x.div }}>{{ label }}</option>{% endfor %}</select></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="row" style="margin-bottom:.75rem">
+  <div class="search" style="width:340px"><input type="search" data-filter="#item-table" placeholder="Search item no., text, package …  (press /)"></div>
+  <select class="sm inline" data-filter-col="#item-table" data-col="cat" style="max-width:260px">
+    <option value="">Any package category</option>{% for k, v in cat_names.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+  <select class="sm inline" data-filter-col="#item-table" data-col="low"><option value="">Any confidence</option><option value="1" {{ 'selected' if request.args.get('low') }}>Low confidence only</option></select>
+  <span class="muted small"><span data-count="#item-table">{{ items|length }}</span> shown · click a category to move an item (its size / colour variants move with it)</span>
+</div>
+<div class="card table-wrap scroll-y" style="max-height:70vh">
+<table class="t" id="item-table">
+  <thead><tr><th>Item</th><th>Description</th><th>Unit</th><th class="right">Qty</th><th>Category</th><th>WP</th></tr></thead>
+  <tbody>
+  {% for it in items %}
+  <tr data-cat="{{ it.cat }}" data-low="{{ '1' if it.method.startswith('llm') and it.conf < 0.6 else '' }}">
+    <td class="nowrap">{{ it.no }}</td>
+    <td class="desc">{{ it.desc }}<div class="muted small">{{ it.section }}</div></td>
+    <td>{{ it.unit }}</td><td class="right nowrap">{{ it.qty }}</td>
+    <td><button class="cat-btn" data-uid="{{ it.uid }}" data-cat="{{ it.cat }}" title="{{ it.reason }}">{{ it.cat_name }}</button>
+      <div class="faint small">{{ it.method }}{% if it.variant %} · variant{% endif %}{% if it.method.startswith('llm') %} · {{ '%.0f'|format(it.conf * 100) }}%{% endif %}</div></td>
+    <td class="nowrap">{{ it.wp }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

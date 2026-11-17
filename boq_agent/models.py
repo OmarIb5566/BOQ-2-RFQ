@@ -171,6 +171,8 @@ class WorkPackage(BaseModel):
     rule_ids: list[str] = Field(default_factory=list)       # special rules that shaped this WP
     notes: list[str] = Field(default_factory=list)
     pdf_file: Optional[str] = None
+    spec_pdf: Optional[str] = None        # the package's specification sections (whole pages)
+    drawings_pdf: Optional[str] = None    # the package's drawing sheets (whole sheets)
 
     @property
     def display_name(self) -> str:
@@ -199,6 +201,89 @@ class Plan(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+# ----------------------------------------------------------------- specs & drawings
+DocKind = Literal["spec", "drawing", "ignored"]
+
+
+class DocFile(BaseModel):
+    """An uploaded specification or drawing file (the BOQs are SourceFile)."""
+    id: str                               # "D1", "D2" …
+    filename: str
+    path: str                             # local copy that is read / cut
+    kind: DocKind
+    pages: int = 0
+    sha: str = ""                         # content hash (cache key)
+    note: str = ""                        # why it was sorted this way / problems
+
+
+class SpecSection(BaseModel):
+    """One specification section, e.g. 'SECTION 04 20 00 UNIT MASONRY', pages 1-19."""
+    uid: str                              # "D1:s1"
+    file_id: str
+    code: str = ""                        # digits only: "042000" (old 5-digit codes: "04200")
+    title: str = ""
+    division: str = ""                    # "04"
+    pages: list[int] = Field(default_factory=list)   # 0-based
+    intro: str = ""                       # the 'section includes' sentence
+    source: str = "text"                  # text | ocr | vlm
+
+    @property
+    def code_display(self) -> str:
+        c = self.code
+        return f"{c[:2]} {c[2:4]} {c[4:6]}" if len(c) == 6 else c
+
+    @property
+    def label(self) -> str:
+        return (f"Section {self.code_display} " if self.code else "") + (self.title or "(untitled)")
+
+
+class DrawingSheet(BaseModel):
+    """One drawing sheet (a PDF page or an image)."""
+    uid: str                              # "D2:p3"
+    file_id: str
+    page: int = 0
+    number: str = ""                      # drawing number from the title block
+    title: str = ""
+    discipline: str = ""                  # AR / ST / ME / EL / PL / FF / LS / CV / ID
+    kind: str = ""                        # plan / elevation / section / detail / schedule / legend / site / cover
+    legend: list[str] = Field(default_factory=list)  # material / finish / legend lines (boilerplate removed)
+    source: str = "text"                  # text | vlm
+    review: bool = False                  # low-confidence reading (VLM only, illegible …)
+
+    @property
+    def label(self) -> str:
+        return " · ".join(x for x in (self.number, self.title) if x) or f"page {self.page + 1}"
+
+
+class DocLink(BaseModel):
+    """A spec section or drawing sheet attached to a work package."""
+    wp_key: str                           # WorkPackage.key (stable across re-plans)
+    ref: str                              # SpecSection.uid or DrawingSheet.uid
+    kind: Literal["spec", "drawing"]
+    method: str                           # code | title | division | legend | sheet type | drawing ref | llm | manual
+    reason: str = ""
+    confidence: float = 1.0
+
+
+class ProjectDocs(BaseModel):
+    files: list[DocFile] = Field(default_factory=list)
+    sections: list[SpecSection] = Field(default_factory=list)
+    sheets: list[DrawingSheet] = Field(default_factory=list)
+    links: list[DocLink] = Field(default_factory=list)
+    # user corrections per work package key: {"add": [refs], "remove": [refs]} — survive re-plans
+    overrides: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
+    stats: dict = Field(default_factory=dict)
+
+    def file_map(self) -> dict[str, DocFile]:
+        return {f.id: f for f in self.files}
+
+    def ref_map(self) -> dict[str, "SpecSection | DrawingSheet"]:
+        return {**{s.uid: s for s in self.sections}, **{s.uid: s for s in self.sheets}}
+
+    def links_for(self, wp_key: str, kind: Optional[str] = None) -> list[DocLink]:
+        return [l for l in self.links if l.wp_key == wp_key and (kind is None or l.kind == kind)]
+
+
 class Session(BaseModel):
     run_id: str
     created: str
@@ -208,4 +293,7 @@ class Session(BaseModel):
     output_dir: Optional[str] = None
     zip_file: Optional[str] = None
     rfq: dict = Field(default_factory=dict)   # last RFQ generation: approved values, files, zip
+    documents: ProjectDocs = Field(default_factory=ProjectDocs)   # specs & drawings (optional uploads)
+    wp_names: dict[str, str] = Field(default_factory=dict)        # user renames, per work-package key
+    rfq_draft: dict = Field(default_factory=dict)                 # RFQ form as last edited (kept between visits)
     log: list[str] = Field(default_factory=list)

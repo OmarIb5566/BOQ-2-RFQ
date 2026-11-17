@@ -7,6 +7,9 @@ venv/
 # Generated run outputs
 workspace/
 
+# Web app: user database + secret key (never commit)
+instance/
+
 # Project / client data (kept local, not published)
 Project 1 Packages/
 Project 2 Packages/

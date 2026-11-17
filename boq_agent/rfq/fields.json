@@ -16,6 +16,12 @@
   },
   "date_format": "%d %B %Y",
 
+  "attachments": {
+    "note": "Attachment lines of the template that are left out of a package's RFQ when it has no such documents (exact, complete lines only).",
+    "drawings": ["Drawings"],
+    "specs": ["Technical Specifications", "Specifications"]
+  },
+
   "labels": {
     "project_name": {
       "with_colon": ["project name", "name of project", "project title", "project", "اسم المشروع", "المشروع", "مشروع"],

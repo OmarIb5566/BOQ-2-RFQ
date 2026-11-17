@@ -1,8 +1,8 @@
 """Upload intake: several BOQ files and/or .zip archives → the list of BOQ files to read.
 
 Zips are unpacked safely (no paths outside the target folder, no symlinks, size / count limits).
-Everything that is not an Excel or PDF file is ignored; PDFs are pre-screened for a BOQ table so that
-drawings and specifications in a project zip are skipped quickly instead of being read / OCR'd in full.
+Excel, PDF and image files are kept (images = scanned drawing sheets); everything else is ignored. The files are
+then sorted into BOQs / specifications / drawings by docs/sort.py (PDFs are pre-screened for a BOQ table).
 """
 from __future__ import annotations
 
@@ -14,7 +14,9 @@ from typing import Callable, Optional
 
 EXCEL_EXT = {".xlsx", ".xlsm", ".xls", ".xlsb"}
 PDF_EXT = {".pdf"}
+IMG_EXT = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
 BOQ_EXT = EXCEL_EXT | PDF_EXT
+UPLOAD_EXT = BOQ_EXT | IMG_EXT
 MAX_FILES = 500
 MAX_UNZIPPED = 2 * 1024 ** 3        # 2 GB
 
@@ -45,7 +47,7 @@ def _unzip(zpath: Path, display: str, dest: Path, log: Callable[[str], None]) ->
             if ext == ".zip":
                 log(f"Nested zip ignored: {display}/{name}")
                 continue
-            if ext not in BOQ_EXT:
+            if ext not in UPLOAD_EXT:
                 continue
             total += info.file_size
             if len(out) >= MAX_FILES or total > MAX_UNZIPPED:
@@ -69,10 +71,10 @@ def collect(uploads: list[tuple[Path, str]], dest: Path, log: Callable[[str], No
         ext = Path(name).suffix.lower()
         if ext == ".zip":
             out += _unzip(path, Path(name).name, dest / f"zip{i}", log)
-        elif ext in BOQ_EXT and not _ignored((Path(name).name,)):
+        elif ext in UPLOAD_EXT and not _ignored((Path(name).name,)):
             out.append(Candidate(path, Path(name).name))
         else:
-            log(f"Ignored (not a BOQ file type): {name}")
+            log(f"Ignored (not an Excel / PDF / image file): {name}")
     return out
 
 

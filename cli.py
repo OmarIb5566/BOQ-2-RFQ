@@ -5,6 +5,7 @@
     python cli.py "BOQ.xls" --deny-all --no-llm
     python cli.py Structural.xlsx Architectural.pdf Landscape.xlsx --approve-all   # one project, several BOQs
     python cli.py "Project BOQs.zip" --approve-all
+    python cli.py BOQ.xlsx "Masonry Specs.pdf" "Plans DWG.pdf" --approve-all   # + optional specs / drawings
 """
 from __future__ import annotations
 
@@ -20,13 +21,16 @@ def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description="Cut a BOQ into work-package PDFs following the company flowchart.")
-    ap.add_argument("files", type=Path, nargs="+", help="BOQ files (Excel / PDF) and/or .zip archives of them")
+    ap.add_argument("files", type=Path, nargs="+",
+                    help="BOQ files (Excel / PDF), optional specifications / drawings (PDF / images), and/or .zip archives")
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--approve-all", action="store_true")
     g.add_argument("--deny-all", action="store_true")
     ap.add_argument("--no-llm", action="store_true", help="keyword-only mode (no Ollama)")
     ap.add_argument("--renderer", choices=["auto", "excel", "html"], default="auto")
     ap.add_argument("--model", default=None)
+    ap.add_argument("--vision-model", default=None, help="vision model for scanned drawings (default qwen2.5vl:7b)")
+    ap.add_argument("--force", action="store_true", help="ignore the caches (re-read every page, re-ask every question)")
     args = ap.parse_args()
 
     s = Settings()
@@ -34,6 +38,9 @@ def main() -> int:
     s.excel_renderer = args.renderer
     if args.model:
         s.model = args.model
+    if args.vision_model:
+        s.vision_model = args.vision_model
+    s.force = args.force
     agent = BOQAgent(s, log=lambda m: print("  ·", m))
     session = agent.analyze(args.files)
 
@@ -61,8 +68,22 @@ def main() -> int:
 
     session = agent.export(session)
     print("\nOUTPUT:")
+    docs = session.documents
+    refs = docs.ref_map()
     for wp in session.plan.work_packages:
         print(f"  {wp.wp_id}  {wp.name_en:55}  {Path(wp.pdf_file).name if wp.pdf_file else '-'}")
+        for l in docs.links_for(wp.key):
+            r = refs[l.ref]
+            print(f"        {'SPEC' if l.kind == 'spec' else 'DWG '} {r.label[:58]:58} {l.method:11} "
+                  f"{l.confidence:.2f}  {l.reason[:70]}")
+    if docs.files:
+        print("\nDOCUMENTS:")
+        for f in docs.files:
+            print(f"  {f.id}  {f.kind:8} {f.filename}  ({f.note})")
+        un = docs.stats.get("unlinked", [])
+        if un:
+            print(f"  not attached to any package: {', '.join(refs[u].label for u in un)}")
+        print(f"  stats: {docs.stats}")
     print(f"\nZIP: {session.zip_file}")
     return 0
 

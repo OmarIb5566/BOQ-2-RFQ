@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Projects · BOQ → RFQ{% endblock %}
+{% block bodyattrs %}{% if jobs %}data-always-poll="1"{% endif %}{% endblock %}
+{% block content %}
+<div class="row between" style="margin-bottom:1rem">
+  <div>
+    <h1>{{ 'Trash' if trash else 'Projects' }}</h1>
+    <p class="muted">{% if trash %}Deleted projects — restore any of them.{% else %}Every project, at every stage. Open one to carry on where you left off — nothing needs to be re-run.{% endif %}</p>
+  </div>
+  <a class="btn primary lg" href="{{ url_for('main.new_project') }}">＋ New project</a>
+</div>
+
+<form class="row" method="get" style="margin-bottom:1rem">
+  <div class="search grow" style="max-width:420px"><input type="search" name="q" value="{{ q }}" placeholder="Search projects, owners, contents …  (press /)" autocomplete="off"></div>
+  <div class="seg">
+    {% for k, l in [('all', 'All'), ('mine', 'Mine'), ('starred', '★ Starred')] %}
+      <a class="{{ 'on' if scope == k and not trash }}" href="{{ url_for('main.projects', scope=k, stage=stage, q=q) }}">{{ l }}</a>
+    {% endfor %}
+    <a class="{{ 'on' if trash }}" href="{{ url_for('main.projects', trash=1) }}">🗑 Trash</a>
+  </div>
+  <input type="hidden" name="scope" value="{{ scope }}">{% if trash %}<input type="hidden" name="trash" value="1">{% endif %}
+</form>
+
+{% if not trash %}
+<div class="row" style="margin-bottom:1rem; gap:.4rem">
+  <a class="tag {{ 'brand' if not stage }}" href="{{ url_for('main.projects', scope=scope, q=q) }}">All stages · {{ counts.values()|sum }}</a>
+  {% for k, l in stages %}{% if counts[k] %}
+    <a class="tag {{ 'stage-' ~ k if stage == k else '' }}" href="{{ url_for('main.projects', scope=scope, q=q, stage=k) }}">{{ l }} · {{ counts[k] }}</a>
+  {% endif %}{% endfor %}
+</div>
+{% endif %}
+
+{% if not rows %}
+  <div class="card empty">
+    <div class="big">📂</div>
+    {% if q or stage or scope != 'all' or trash %}
+      <h2>Nothing found</h2><p>Try another search or filter.</p>
+      <a class="btn" href="{{ url_for('main.projects') }}">Show all projects</a>
+    {% else %}
+      <h2>No projects yet</h2>
+      <p>Upload a BOQ — and its specifications and drawings if you have them — to start.</p>
+      <a class="btn primary" href="{{ url_for('main.new_project') }}">＋ New project</a>
+    {% endif %}
+  </div>
+{% else %}
+<div class="card">
+  {% for r in rows %}
+  {% set j = jobs.get(r.run_id) %}
+  <div class="proj-card">
+    <button class="star {{ 'on' if r.starred }}" title="Star" data-post="/api/p/{{ r.run_id }}/project" data-body='{"starred": {{ 0 if r.starred else 1 }}}' data-then="reload">★</button>
+    <div class="grow">
+      <div class="row" style="gap:.5rem">
+        <a class="name" href="{{ url_for('main.project', run_id=r.run_id) }}">{{ r.name }}</a>
+        <span class="tag stage-{{ r.stage }}">{{ stage_label.get(r.stage, r.stage) }}</span>
+        {% if not r.shared %}<span class="tag" title="Only the owner (and administrators) can open it">🔒 private</span>{% endif %}
+      </div>
+      <div class="meta">{{ r.summary }}</div>
+      <div class="meta">{{ r.owner_name or '—' }} · updated {{ r.updated|ago }} · created {{ r.created[:10] }}</div>
+      {% if j %}
+        <div class="row" style="margin-top:.35rem; max-width:560px" data-jobrow="{{ r.run_id }}"><span class="spin" style="color:var(--brand)"></span><span class="small jr-msg">{{ j.label }} — {{ j.message }}</span><div class="bar"><i style="width:{{ (j.progress * 100)|round|int }}%"></i></div></div>
+      {% elif r.stage == 'failed' %}
+        <div class="small" style="color:var(--bad)">{{ r.error[:180] }}</div>
+      {% else %}
+        <div class="mini-steps">{% set si = stage_index(r.stage) %}{% for i in range(4) %}<i class="{{ 'done' if i < si else 'now' if i == si }}"></i>{% endfor %}</div>
+      {% endif %}
+    </div>
+    <div class="row nowrap">
+      {% if trash %}
+        <button class="btn sm" data-post="/api/p/{{ r.run_id }}/project" data-body='{"deleted": 0}' data-then="reload">Restore</button>
+      {% else %}
+        <a class="btn sm" href="{{ url_for('main.project', run_id=r.run_id) }}">Open</a>
+        <details class="menu">
+          <summary class="btn sm ghost" title="More">⋯</summary>
+          <div class="pop">
+            <a href="{{ url_for('main.tab', run_id=r.run_id, tab='overview') }}">Overview</a>
+            {% if r.stage not in ('analyzing', 'failed') %}
+            <a href="{{ url_for('main.tab', run_id=r.run_id, tab='cases') }}">Special cases</a>
+            <a href="{{ url_for('main.tab', run_id=r.run_id, tab='packages') }}">Work packages</a>
+            <a href="{{ url_for('main.tab', run_id=r.run_id, tab='export') }}">Export</a>
+            <a href="{{ url_for('main.tab', run_id=r.run_id, tab='rfq') }}">RFQs</a>
+            <hr>
+            <button data-post="/api/p/{{ r.run_id }}/duplicate" data-confirm="Make a copy of “{{ r.name }}”? The copy can be changed without touching the original.">Duplicate</button>
+            {% endif %}
+            {% if me.role == 'admin' or r.owner_id == me.id %}
+            <button data-post="/api/p/{{ r.run_id }}/project" data-body='{"shared": {{ 0 if r.shared else 1 }}}' data-then="reload">{{ 'Make private' if r.shared else 'Share with the team' }}</button>
+            <hr>
+            <button style="color:var(--bad)" data-post="/api/p/{{ r.run_id }}/project" data-body='{"deleted": 1}' data-confirm="Move “{{ r.name }}” to the trash? It can be restored from there." data-then="reload">Delete</button>
+            {% endif %}
+          </div>
+        </details>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+<p class="muted small" style="margin-top:.6rem">{{ rows|length }} project(s)</p>
+{% endif %}
+{% endblock %}

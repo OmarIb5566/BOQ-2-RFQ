@@ -18,11 +18,19 @@ class Settings:
     batch_size: int = 10              # items per classification call
     review_threshold: float = 0.70    # items below this confidence get a second (reflective) look
     use_llm: bool = True              # False -> keyword-only fallback (no Ollama needed)
+    force: bool = False               # True -> ignore the caches (re-read every page, re-ask every question)
+
+    # --- vision model: only for drawing sheets / spec pages WITHOUT a text layer (scans, images) ---
+    vision_model: str = os.getenv("BOQ_VISION_MODEL", "qwen2.5vl:7b")
+    vision_px: int = 1800             # long edge of a whole-sheet render (1280 px made qwen2.5vl loop)
+    vision_crop_px: int = 1400        # long edge of a title-block crop
+    vision_max_tokens: int = 900      # hard cap on generated tokens (stops repetition loops)
 
     # --- paths ---
     workspace: Path = field(default_factory=lambda: Path(os.getenv("BOQ_WORKSPACE", PROJECT_ROOT / "workspace")))
     rules_path: Path = field(default_factory=lambda: PROJECT_ROOT / "boq_agent" / "knowledge" / "flowchart_rules.json")
     rfq_template: Path = field(default_factory=lambda: PROJECT_ROOT / "boq_agent" / "rfq" / "templates" / "RFQ Templet.docx")
+    doc_rules_path: Path = field(default_factory=lambda: PROJECT_ROOT / "boq_agent" / "knowledge" / "document_rules.json")
     rfq_fields: Path = field(default_factory=lambda: PROJECT_ROOT / "boq_agent" / "rfq" / "fields.json")
 
     # --- OCR for scanned PDFs ---

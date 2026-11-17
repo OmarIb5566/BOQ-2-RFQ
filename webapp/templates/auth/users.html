@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Users · BOQ → RFQ{% endblock %}
+{% block content %}
+<div class="row between" style="margin-bottom:1rem">
+  <div><h1>Users</h1><p class="muted">Everyone who can sign in. Administrators see every project and manage users.</p></div>
+</div>
+<div class="grid" style="grid-template-columns: 2fr 1fr; align-items:start">
+  <div class="card">
+    <div class="table-wrap">
+      <table class="t">
+        <thead><tr><th>User</th><th>Role</th><th class="right">Projects</th><th>Last sign-in</th><th></th></tr></thead>
+        <tbody>
+        {% for u in users %}
+          <tr class="{{ '' if u.active else 'faint' }}">
+            <td><b>{{ u.full_name }}</b><br><span class="muted small">{{ u.username }}</span>{% if not u.active %} <span class="tag">disabled</span>{% endif %}</td>
+            <td>
+              {% if u.id == me.id %}<span class="tag violet">{{ u.role }} (you)</span>{% else %}
+              <form method="post" class="row" style="gap:.3rem">
+                <input type="hidden" name="_csrf" value="{{ csrf_token }}"><input type="hidden" name="action" value="role"><input type="hidden" name="uid" value="{{ u.id }}">
+                <select name="role" class="sm" onchange="this.form.submit()">
+                  <option value="user" {{ 'selected' if u.role == 'user' }}>user</option>
+                  <option value="admin" {{ 'selected' if u.role == 'admin' }}>admin</option>
+                </select>
+              </form>{% endif %}
+            </td>
+            <td class="right">{{ u.n }}</td>
+            <td class="muted small">{{ u.last_login|ago if u.last_login else 'never' }}</td>
+            <td class="right nowrap">
+              <details class="menu" style="display:inline-block">
+                <summary class="btn sm">Manage ▾</summary>
+                <div class="pop" style="min-width:280px">
+                  <form method="post" style="padding:.4rem .5rem">
+                    <input type="hidden" name="_csrf" value="{{ csrf_token }}"><input type="hidden" name="action" value="reset"><input type="hidden" name="uid" value="{{ u.id }}">
+                    <label class="field"><span>New password</span><input type="password" name="password" minlength="8" required></label>
+                    <button class="btn sm primary">Reset password</button>
+                  </form>
+                  {% if u.id != me.id %}<hr>
+                  <form method="post"><input type="hidden" name="_csrf" value="{{ csrf_token }}"><input type="hidden" name="uid" value="{{ u.id }}">
+                    <input type="hidden" name="action" value="{{ 'disable' if u.active else 'enable' }}">
+                    <button type="submit">{{ 'Disable account' if u.active else 'Enable account' }}</button></form>{% endif %}
+                </div>
+              </details>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <form method="post" class="card pad">
+    <h2>Add a user</h2>
+    <input type="hidden" name="_csrf" value="{{ csrf_token }}"><input type="hidden" name="action" value="add">
+    <label class="field"><span>Name</span><input type="text" name="full_name" required></label>
+    <label class="field"><span>User name</span><input type="text" name="username" required></label>
+    <label class="field"><span>First password</span><input type="password" name="password" minlength="8" required><div class="hint">They can change it under “Account”.</div></label>
+    <label class="field"><span>Role</span><select name="role"><option value="user">user</option><option value="admin">admin</option></select></label>
+    <button class="btn primary">Add user</button>
+  </form>
+</div>
+{% endblock %}

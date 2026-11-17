@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Sign in · BOQ → RFQ{% endblock %}
+{% block body %}
+<div class="auth">
+  <div class="card">
+    <div class="logo"><span class="mark">RFQ</span> BOQ → RFQ</div>
+    {% for cat, m in get_flashed_messages(with_categories=true) %}<div class="banner {{ 'bad' if cat == 'error' else 'ok' }}">{{ m }}</div>{% endfor %}
+    <form method="post">
+      <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+      <label class="field"><span>User name</span><input type="text" name="username" required autofocus autocomplete="username"></label>
+      <label class="field"><span>Password</span><input type="password" name="password" required autocomplete="current-password"></label>
+      <label class="check" style="margin-bottom:1rem"><input type="checkbox" name="remember" checked> Keep me signed in for 30 days</label>
+      <button class="btn primary lg" style="width:100%">Sign in</button>
+    </form>
+    <p class="muted small center" style="margin-top:1rem">No account? Ask your administrator.</p>
+  </div>
+</div>
+{% endblock %}

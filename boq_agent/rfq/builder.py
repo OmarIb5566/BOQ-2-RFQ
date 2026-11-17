@@ -81,8 +81,21 @@ def prefill(session: Session, template: Path, cfg: dict, llm=None, system: str =
             "supplier_fields": [s.name for s in specs if s.scope == "supplier"]}
 
 
+def attachment_drops(wp: WorkPackage, cfg: dict) -> tuple[str, ...]:
+    """Attachment lines of the template to leave out for this package (no drawings / no specs attached).
+    The lines are listed in fields.json -> "attachments"."""
+    att = cfg.get("attachments", {})
+    out: list[str] = []
+    if not wp.drawings_pdf:
+        out += att.get("drawings", [])
+    if not wp.spec_pdf:
+        out += att.get("specs", [])
+    return tuple(out)
+
+
 def generate(session: Session, template: Path, project_values: dict[str, str], packages: list[dict],
-             supplier_fields: list[str], out_dir: Path, log: Callable[[str], None] = print) -> dict:
+             supplier_fields: list[str], out_dir: Path, log: Callable[[str], None] = print,
+             cfg: Optional[dict] = None) -> dict:
     """packages: [{"wp_id", "values": {field: value}, "suppliers": [names]}] — values already approved
     by the user. Returns a summary dict (also stored on the session)."""
     out_dir = Path(out_dir)
@@ -98,11 +111,15 @@ def generate(session: Session, template: Path, project_values: dict[str, str], p
         folder.mkdir(parents=True, exist_ok=True)
         if wp.pdf_file and Path(wp.pdf_file).exists():
             shutil.copy2(wp.pdf_file, folder / f"BOQ - {Path(wp.pdf_file).name}")
+        for extra in (wp.spec_pdf, wp.drawings_pdf):          # optional uploads, named "… - Specs.pdf" etc.
+            if extra and Path(extra).exists():
+                shutil.copy2(extra, folder / Path(extra).name)
+        drops = attachment_drops(wp, cfg or {})
         suppliers = [s.strip() for s in pk.get("suppliers", []) if s.strip()] or [""]
         for sup in suppliers:
             values = {**project_values, **pk.get("values", {}), **{name: sup for name in supplier_fields}}
             out = folder / (safe_filename(f"RFQ - {wp.wp_id} {wp.name_en}" + (f" - {sup}" if sup else ""), 120) + ".docx")
-            fill_template(template, out, values)
+            fill_template(template, out, values, drops)
             unfilled.update(f for f in specs if not str(values.get(f, "")).strip())
             files.append(str(out))
             log(f"RFQ: {out.relative_to(out_dir)}")

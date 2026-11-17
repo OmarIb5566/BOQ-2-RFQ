@@ -1,0 +1,30 @@
+{% extends "project/layout.html" %}
+{% block tab %}
+<div class="grid" style="grid-template-columns: 2fr 3fr; align-items:start">
+  <div class="card">
+    <div class="card-head"><h3 style="margin:0">Jobs</h3></div>
+    <div class="table-wrap scroll-y">
+      <table class="t">
+        <thead><tr><th>Job</th><th>By</th><th>When</th><th>Result</th></tr></thead>
+        <tbody>
+        {% for j in jobs %}
+          <tr><td><b>{{ j.label }}</b></td><td class="small">{{ j.who or '—' }}</td><td class="small nowrap">{{ j.created|ago }}</td>
+            <td class="small"><span class="tag {{ 'ok' if j.status == 'done' else 'bad' if j.status in ('failed', 'interrupted') else 'brand' }}">{{ j.status }}</span>
+              {{ j.message if j.status == 'done' else j.error[:200] }}</td></tr>
+        {% else %}<tr><td colspan="4" class="muted">No jobs yet.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3 style="margin:0">Agent log</h3><span class="grow"></span>
+      <div class="search" style="width:240px"><input type="search" class="sm" data-filter="#log-table" placeholder="Filter …"></div></div>
+    <div class="table-wrap scroll-y" style="max-height:70vh">
+      <table class="t" id="log-table"><tbody>
+        {% for line in log %}<tr><td class="small" style="font-family: ui-monospace, Consolas, monospace">{{ line }}</td></tr>
+        {% else %}<tr><td class="muted">Empty.</td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+  </div>
+</div>
+{% endblock %}

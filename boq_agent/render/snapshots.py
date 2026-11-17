@@ -53,7 +53,11 @@ def _stamp(pdf_path: Path, wp: WorkPackage, settings: Settings) -> None:
         page.insert_htmlbox(fitz.Rect(18, 3, r.width - 18, 16),
                             f"<div>{label} — page {i + 1}/{len(doc)}</div>", css=css, archive=arch)
     tmp = pdf_path.with_suffix(".tmp.pdf")
-    doc.save(tmp, garbage=3, deflate=True)
+    try:
+        doc.subset_fonts()        # insert_htmlbox embeds the whole Arial font on every page (+0.5 MB / page)
+    except Exception:  # noqa: BLE001
+        pass
+    doc.save(tmp, garbage=4, deflate=True)
     doc.close()
     shutil.move(tmp, pdf_path)
 

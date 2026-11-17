@@ -1,0 +1,52 @@
+{% extends "project/layout.html" %}
+{% block tab %}
+<p class="muted">Each uploaded specification is split into its sections, and each drawing file into its sheets. They are attached to the packages they concern; the reason is shown for each one. Open a package to add or remove documents.
+{% if stats.index_seconds is defined %}<span class="faint small">Read in {{ stats.index_seconds }} s · {{ stats.sheets_text_layer or 0 }} sheet(s) from the text layer · {{ stats.vision_calls or 0 }} vision-model read(s) · matched with {{ stats.match_llm_calls or 0 }} AI question(s).</span>{% endif %}</p>
+
+{% if unlinked %}
+<div class="banner warn"><div><b>{{ unlinked|length }} document(s) are not attached to any package:</b>
+  <span class="small">{% for r in unlinked[:10] %}{{ label(r) }}{{ ', ' if not loop.last }}{% endfor %}{% if unlinked|length > 10 %} …{% endif %}</span>
+  <div class="small muted">Open the package that needs one and add it there.</div></div></div>
+{% endif %}
+
+{% for x in files %}{% set f = x.f %}
+<div class="card" style="margin-bottom:1rem">
+  <div class="card-head">
+    <span class="tag {{ 'brand' if f.kind == 'spec' else 'violet' if f.kind == 'drawing' else '' }}">{{ {'spec': 'Specification', 'drawing': 'Drawings', 'ignored': 'Not used'}[f.kind] }}</span>
+    <div class="grow"><b>{{ f.filename }}</b><div class="muted small">{{ f.note }} · {{ f.pages }} page(s){% if x.review %} · ⚠ {{ x.review }} sheet(s) read by the vision model — check them{% endif %}</div></div>
+    {% if f.path %}
+    <a class="btn sm ghost" href="{{ rel(f.path) }}" target="_blank">Open</a>
+    <select class="sm inline" title="What is this file?" onchange="post('/api/p/{{ p.run_id }}/docs/kind', {file_id: '{{ f.id }}', kind: this.value})">
+      {% for k, l in [('spec', 'Specification'), ('drawing', 'Drawings'), ('ignored', 'Not used')] %}<option value="{{ k }}" {{ 'selected' if f.kind == k }}>{{ l }}</option>{% endfor %}
+    </select>
+    {% endif %}
+  </div>
+  {% set refs_ = x.secs if f.kind == 'spec' else x.sheets %}
+  {% if refs_ and f.kind != 'ignored' %}
+  <details class="more" id="docs-{{ f.id }}" style="padding:0 1.25rem .6rem" {{ 'open' if files|length <= 3 }}>
+    <summary>{{ refs_|length }} {{ 'section(s)' if f.kind == 'spec' else 'sheet(s)' }}</summary>
+    <div class="table-wrap scroll-y" style="max-height:420px">
+    <table class="t">
+      <thead><tr><th>{{ 'Section' if f.kind == 'spec' else 'Sheet' }}</th><th>Pages</th><th>Sent with</th></tr></thead>
+      <tbody>
+      {% for r in refs_ %}
+        <tr>
+          <td><b>{{ r.label }}</b>
+            {% if f.kind == 'drawing' %}<div class="muted small">{{ r.kind or 'sheet' }}{% if r.discipline %} · {{ r.discipline }}{% endif %}{% if r.source == 'vlm' %} · read by the vision model{% endif %}</div>{% endif %}
+            {% if f.kind == 'spec' and r.intro %}<div class="muted small">{{ r.intro[:160] }}</div>{% endif %}</td>
+          <td class="nowrap small"><a href="{{ rel(f.path) }}#page={{ (r.pages[0] if f.kind == 'spec' and r.pages else r.page) + 1 }}" target="_blank">
+            {% if f.kind == 'spec' %}{{ r.pages[0] + 1 if r.pages }}{% if r.pages|length > 1 %}–{{ r.pages[-1] + 1 }}{% endif %}{% else %}{{ r.page + 1 }}{% endif %}</a></td>
+          <td class="small">{% for wp, l in by_ref.get(r.uid, []) %}
+              <div><a href="{{ url_for('main.package', run_id=p.run_id, key=wp.key) }}">{{ wp.wp_id }} {{ wp.name_en }}</a>
+                <span class="muted">— {% if l.confidence < 0.7 %}⚠ {% endif %}{{ l.reason }}</span></div>
+            {% else %}<span class="tag warn">not attached</span>{% endfor %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </details>
+  {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

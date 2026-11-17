@@ -1,0 +1,61 @@
+{
+  "notes": [
+    "Reference data for matching uploaded specifications and drawings to work packages. Edit this file to change the behaviour; no code change is needed.",
+    "file_name_hints: words in a file name that say what the file is (used only when the content does not decide it).",
+    "sheet_kinds / disciplines: how a drawing sheet's type and trade are recognised from its title and drawing number.",
+    "layout_sheets: which general sheets (e.g. architectural floor plans) every package of a division needs even when no material of the package is written on the sheet. Matches from this list are marked 'sheet type' with a lower confidence.",
+    "Keywords are matched after normalisation (lower case, Arabic letter variants unified)."
+  ],
+
+  "file_name_hints": {
+    "boq":     ["boq", "bill of quantities", "bills of quantities", "quantities", "مقايسه", "مقايسة", "المقايسه", "جدول الكميات", "كميات"],
+    "spec":    ["spec", "specs", "specification", "specifications", "spc", "مواصفات", "المواصفات"],
+    "drawing": ["dwg", "drawing", "drawings", "dwgs", "plan", "plans", "elevation", "elevations", "section", "sections", "detail", "details", "layout", "shop", "لوحات", "رسومات", "مخططات", "اللوحات"]
+  },
+
+  "sheet_kinds": {
+    "schedule":  {"keywords": ["schedule", "جدول"], "codes": ["SCH"]},
+    "legend":    {"keywords": ["legend", "symbols", "abbreviations", "general notes", "مفتاح"], "codes": ["LEG", "GN"]},
+    "site":      {"keywords": ["site plan", "master plan", "landscape", "hardscape", "softscape", "الموقع العام", "تنسيق الموقع"], "codes": ["SP", "MP", "LS", "LA"]},
+    "elevation": {"keywords": ["elevation", "elevations", "facade", "facades", "واجهه", "واجهات", "الواجهات"], "codes": ["ELA", "ELV", "EL", "ELE"]},
+    "section":   {"keywords": ["section", "sections", "قطاع", "قطاعات"], "codes": ["SEC", "SC"]},
+    "detail":    {"keywords": ["detail", "details", "تفاصيل", "تفصيله"], "codes": ["DET", "DT", "GD"]},
+    "ceiling":   {"keywords": ["ceiling plan", "reflected ceiling", "rcp", "الاسقف المعلقه"], "codes": ["RCP", "CL"]},
+    "plan":      {"keywords": ["plan", "plans", "layout", "مسقط", "مساقط", "المسقط"], "codes": ["FL", "FL0", "FL1", "FL2", "GF", "FF", "PL", "LAY"]},
+    "cover":     {"keywords": ["cover sheet", "drawing list", "index of drawings", "قائمه اللوحات"], "codes": ["CV", "IDX"]}
+  },
+
+  "disciplines": {
+    "AR": {"name": "Architectural", "codes": ["AR", "A", "ARC", "ARCH"], "keywords": ["architectural", "architecture", "معماري", "معماريه"]},
+    "ID": {"name": "Interior design", "codes": ["ID", "INT"], "keywords": ["interior", "داخلي"]},
+    "ST": {"name": "Structural", "codes": ["ST", "S", "STR"], "keywords": ["structural", "reinforcement", "foundation", "foundations", "انشائي", "انشائيه", "تسليح"]},
+    "ME": {"name": "Mechanical", "codes": ["ME", "M", "MEC", "MECH", "HVAC"], "keywords": ["mechanical", "hvac", "air conditioning", "ميكانيكا", "تكييف"]},
+    "PL": {"name": "Plumbing", "codes": ["PL", "P", "PLB", "PH"], "keywords": ["plumbing", "drainage", "water supply", "sanitary", "صحي", "صرف"]},
+    "FF": {"name": "Fire fighting", "codes": ["FF", "FP", "FS"], "keywords": ["fire fighting", "fire protection", "sprinkler", "حريق"]},
+    "EL": {"name": "Electrical", "codes": ["EL", "E", "ELEC", "LC"], "keywords": ["electrical", "lighting", "power", "كهرباء", "انارة", "اناره"]},
+    "LS": {"name": "Landscape", "codes": ["LS", "LA", "L", "LND"], "keywords": ["landscape", "hardscape", "softscape", "لاندسكيب", "تنسيق"]},
+    "CV": {"name": "Civil / infrastructure", "codes": ["CV", "C", "CIV", "INF"], "keywords": ["civil", "infrastructure", "roads", "grading", "طرق", "بنيه تحتيه"]}
+  },
+
+  "layout_sheets": [
+    {"disciplines": ["AR"], "kinds": ["plan", "elevation", "section"], "divisions": ["04"],
+     "why": "masonry walls are taken off the architectural plans, elevations and sections"},
+    {"disciplines": ["AR"], "kinds": ["plan", "elevation", "detail", "schedule"], "divisions": ["08"],
+     "why": "openings are located on plans / elevations and sized in the door & window schedules"},
+    {"disciplines": ["AR", "ID"], "kinds": ["ceiling"], "categories": ["SUSPENDED_CEILING"],
+     "why": "reflected ceiling plans"},
+    {"disciplines": ["ST"], "kinds": ["*"], "divisions": ["03", "05", "31"],
+     "why": "structural drawings"},
+    {"disciplines": ["ME"], "kinds": ["*"], "divisions": ["23"], "why": "mechanical drawings"},
+    {"disciplines": ["PL"], "kinds": ["*"], "divisions": ["22"], "why": "plumbing drawings"},
+    {"disciplines": ["FF"], "kinds": ["*"], "divisions": ["21"], "why": "fire-fighting drawings"},
+    {"disciplines": ["EL"], "kinds": ["*"], "divisions": ["26", "27", "28"], "why": "electrical drawings"},
+    {"disciplines": ["LS"], "kinds": ["*"], "divisions": ["32"], "why": "landscape drawings"},
+    {"disciplines": ["CV"], "kinds": ["*"], "divisions": ["31", "33"], "why": "civil / infrastructure drawings"}
+  ],
+
+  "drawing_number_labels": ["drawing no", "drawing number", "dwg no", "dwg. no", "sheet no", "drawing no.", "رقم اللوحه", "رقم اللوحة"],
+  "sheet_title_labels": ["sheet description", "drawing title", "sheet title", "title", "عنوان اللوحه", "اسم اللوحه"],
+
+  "boilerplate_share": 0.5
+}

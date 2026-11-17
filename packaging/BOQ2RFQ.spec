@@ -1,25 +1,27 @@
 # PyInstaller spec for BOQ2RFQ.exe — build with packaging\build_exe.bat
-from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
+from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 ROOT = SPECPATH + "\\.."
 
 datas = [
-    (ROOT + "\\BOQ2RFQ.py", "."),
+    (ROOT + "\\webapp\\templates", "webapp\\templates"),
+    (ROOT + "\\webapp\\static", "webapp\\static"),
     (ROOT + "\\boq_agent\\knowledge\\flowchart_rules.json", "boq_agent\\knowledge"),
+    (ROOT + "\\boq_agent\\knowledge\\masterformat_titles.json", "boq_agent\\knowledge"),
+    (ROOT + "\\boq_agent\\knowledge\\document_rules.json", "boq_agent\\knowledge"),
     (ROOT + "\\boq_agent\\rfq\\fields.json", "boq_agent\\rfq"),
     (ROOT + "\\boq_agent\\rfq\\templates", "boq_agent\\rfq\\templates"),
 ]
 binaries = []
-hiddenimports = collect_submodules("boq_agent") + [
+hiddenimports = collect_submodules("boq_agent") + collect_submodules("webapp") + [
     "xlrd", "pythoncom", "pywintypes", "win32com", "win32com.client",
 ]
 
-for pkg in ("streamlit", "pymupdf", "pydantic"):
+for pkg in ("pymupdf", "pydantic", "flask", "jinja2", "waitress"):
     d, b, h = collect_all(pkg)
     datas += d
     binaries += b
     hiddenimports += h
-datas += copy_metadata("streamlit")
 
 a = Analysis(
     [ROOT + "\\packaging\\launcher.py"],

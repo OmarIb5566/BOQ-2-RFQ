@@ -121,12 +121,12 @@ Special categories (`"special": true`) are looked for in every division, whateve
 
 | Rule | Detected items | Approve | Deny |
 |---|---|---|---|
-| **R1** External marble | Marble/granite/stone used outside (facades, copings, external sills) | Bundled into the **Div 04 Masonry** WP. If the BOQ has no masonry package, it is issued alone and a note explains why. | Separate **External Marble / Stone Cladding** WP |
+| **R1** Marble (internal & external) | ALL marble / granite / stone of the building — internal floors, skirting, thresholds **and** external cladding / copings — is one package (`INTERNAL_STONE` is packaged with `EXTERNAL_MARBLE`). Stone paving in the landscape is not included. | The whole marble package is bundled into the **Div 04 Masonry** WP. If the BOQ has no masonry package, it is issued alone and a note explains why. | One separate **Marble / Granite / Stone (Internal & External)** WP |
 | **R2** Roof tiles | Tiles/pavers forming the roof finish (incl. بلاطات أسمنتية لزوم السطح, قرميد) | Separate **Roof Tiles** WP | Stays in its own section's package (e.g. Div 07 Insulation) |
 | **R3** Expansion joints | Expansion / movement / settlement joints and joint covers | Separate **Expansion Joints** WP | Stays in its own section's package |
 | **R4** Wooden louvers | Louvers of real wood | Grouped with **Wooden Doors Only** (if present) | Separate **Wooden Louvers** WP |
 | **R5** Metal louvers | Aluminium (even with wood texture), steel or sheet-metal louvers | **Metal Louvers** WP under Div 05 Metals | **Louvers** WP under Div 08 Openings |
-| **R6** Div 10 per item | Div 10 Specialties with ≥ 2 BOQ descriptions | One WP **per BOQ description** (sub-items such as 21.1, 21.2 stay with their parent 21, and size/colour variants stay together, see 3.5) | Div 10 kept as **one** WP |
+| **R6** Div 10 by product group | Div 10 Specialties with ≥ 2 product groups | One WP **per product group**. A product group ("umbrella") is everything that serves the same purpose or is the same product in other sizes / types / capacities: all toilet accessories, all mirrors, all fire extinguishers, all signage. How it is decided: (1) MasterFormat section codes in the BOQ headings (`Section 10 28 00` → *Toilet, Bath, and Laundry Accessories*; titles from `masterformat-2016.pdf`); (2) otherwise the LLM groups the items by purpose; (3) groups whose names end in the same product word are merged (*External Logo Signage* + *Wall Signage* → *Signage*); (4) items tied together (same parent description, size variants) always share a group | Div 10 kept as **one** WP |
 | **XBOQ** Same package in several BOQs (multi-BOQ projects only) | A package whose own items come from 2+ uploaded BOQs (e.g. *Div 03: Concrete* in the Structural **and** the Landscape BOQ). Items moved in by another oval (e.g. earthwork pulled in by R7) do not count, because that oval was already approved | **One** work package and **one** RFQ for all BOQs | One package per BOQ, e.g. *Div 03: Concrete — Structural* and *Div 03: Concrete — Landscape* |
 | **R7** Earthwork | Excavation, backfilling, soil replacement, compaction found **outside** the earthwork section, in the structural and/or landscape parts (incl. excavation for fountains / pump rooms) | Moved into the **Div 31 Earthwork** WP. If the BOQ has no earthwork section, an Earthwork WP is **created** from these items. | Stays in the structural / landscape package where the BOQ put it |
 
@@ -153,6 +153,8 @@ General rule: the same product in different **sizes, dimensions, thicknesses, co
 - **Under the same parent description:** their own lines are compared. A parent repeated after a page break counts as the same parent.
 - **Without a parent:** the full descriptions are compared.
 - **Short size lines under a heading that describes the product** (e.g. "20mm thick, Aluminum signage …") are compared word by word.
+
+- **Size-only lines** ("1400x1000mm.", "3000x1000mm.") belong to the product described above them.
 
 Items under **different** parents are never variants. For example, fountain excavation WF-01 and fountain waterproofing WF-01 stay apart.
 
@@ -212,6 +214,8 @@ Each row gets a **role**:
 - **Items.** Every leaf becomes an **Item** carrying its own text, the **parent description** (when its number is a child of the parent's, e.g. 3.2 under 3, or a lettered sub-item), the stack of headings above it, unit, quantity, rate and total.
 - **Sibling-numbered lines.** Some BOQs number a description and its priced lines at the same level, e.g. description `2.8.1 اعمال الحفر` followed by lines `2.8.1 … 2.8.9`. Short priced lines that directly follow a description at its own level belong to it.
 - **Group titles.** A numbered description that gets no priced lines of its own (e.g. `2.8 قسم 02815 النوافير`) is a group **heading** for what follows. It is no longer an orphan stuck to the previous item.
+- **Repeated table headers.** A row made of column titles (ITEM / DESCRIPTION / UNIT / QTY), printed again at the top of each page, is ignored. It is not an item.
+- **Section-code headings** such as `Section 10 28 00` start a new group, even when the word "Section" is garbled by a PDF-to-Excel conversion (`SecEon 102116`).
 - **Orphan rows.** Descriptive rows that belong to no item, such as the wrapped tail of a description printed under its quantity line, are attached to the preceding item, so no text is lost from the snapshots.
 
 ### ③ Divisions (`analysis/classifier.py → assign_divisions`)

@@ -15,6 +15,40 @@ from .variants import consolidate, variant_groups
 _EXPLICIT_DIV = re.compile(r"\b(?:division|divi?|div\.?)\s*[:\-]?\s*0?(\d{1,2})\b", re.I)
 
 
+_GENERIC_HEADS = {"equipment", "system", "systems", "works", "work", "items", "item", "products", "product",
+                  "units", "unit", "materials", "material", "elements", "fittings", "fixtures", "installation",
+                  "specialties", "specialty", "and", "&"}
+
+
+def _merge_same_family(its: list[Item]) -> None:
+    """'Aluminum Wall Signage' + 'External Logo Signage' → one 'Signage' group: groups whose names end in the
+    same product word are one family (generic last words such as 'Equipment' / 'System' never merge)."""
+    from collections import defaultdict
+
+    def head(name: str) -> Optional[str]:
+        words = re.findall(r"[a-z]+", name.lower())
+        w = words[-1] if words else ""
+        return None if not w or w in _GENERIC_HEADS else w.rstrip("s")
+
+    fam: dict[str, set[str]] = defaultdict(set)
+    for it in its:
+        if it.umbrella and head(it.umbrella):
+            fam[head(it.umbrella)].add(it.umbrella)
+    for names in fam.values():
+        if len(names) < 2:
+            continue
+        split = [n.split() for n in names]
+        common: list[str] = []
+        for ws in zip(*(reversed(s) for s in split)):        # longest common trailing words
+            if len({w.lower() for w in ws}) != 1:
+                break
+            common.insert(0, ws[0])
+        merged = " ".join(common) or sorted(names, key=len)[0]
+        for it in its:
+            if it.umbrella in names:
+                it.umbrella = merged
+
+
 class Classifier:
     def __init__(self, rules: FlowchartRules, settings: Settings, llm: Optional[OllamaClient],
                  log: Callable[[str], None] = print, progress: Callable[[float, str], None] = lambda p, m: None):
@@ -169,6 +203,67 @@ class Classifier:
         self._review(doc, work)
         self._apply_context_rules(doc, sections)
         self._keep_variants_together(doc)
+        self._group_umbrellas(doc)
+
+    def _group_umbrellas(self, doc: BOQDocument) -> None:
+        """Divisions packaged item by item (Div 10): group items that serve the same purpose or are the same
+        product in other sizes / types into one product group ("umbrella"). MasterFormat section codes in the
+        headings decide first; the LLM groups the rest; items already tied together (same parent, size /
+        colour variants, same code) always share one group."""
+        from collections import Counter, defaultdict
+
+        items = doc.item_map()
+        by_div: dict[str, list[Item]] = defaultdict(list)
+        for s in doc.sections:
+            if self.rules.mode(s.division) == "per_item":
+                by_div[s.division or ""] += [items[u] for u in s.item_uids]
+        for div, its in by_div.items():
+            for it in its:
+                it.umbrella = None
+            use_mf = self.rules.divisions.get(div, {}).get("group_by") == "masterformat"
+            rest: list[Item] = []
+            for it in its:
+                g = self.rules.mf_group(div, list(reversed(it.headings)) + [it.parent_text, it.description]) if use_mf else None
+                if g:
+                    it.umbrella = self.rules.mf_titles.get(g) or f"Section {g[:2]} {g[2:]} 00"
+                else:
+                    rest.append(it)
+            if rest and self.llm:
+                names: list[str] = []
+                for i in range(0, len(rest), 40):
+                    batch = rest[i:i + 40]
+                    ids = [f"I{k + 1}" for k in range(len(batch))]
+                    text = "\n".join(f"[{iid}] {it.llm_text(160, 200)}" for iid, it in zip(ids, batch))
+                    existing = ("Groups already used for earlier items (reuse them when they fit): " + "; ".join(names)
+                                if names else "")
+                    try:
+                        ans = self.llm.chat_json(self.system, P.UMBRELLA_TASK.format(
+                            division=div, division_name=self.rules.division_name(div), existing=existing, items=text),
+                            P.umbrella_schema(ids))
+                    except LLMError as e:
+                        self.log(f"Product grouping: LLM unavailable ({e}).")
+                        break
+                    for r in ans.get("results", []):
+                        if r.get("item_id") in ids and (r.get("group") or "").strip():
+                            g = " ".join(r["group"].split()).strip(" .")[:60].title()
+                            batch[ids.index(r["item_id"])].umbrella = g
+                            if g not in names:
+                                names.append(g)
+            _merge_same_family(its)
+            # items tied together structurally share one group (the majority group of the tie)
+            ties: dict[str, list[Item]] = defaultdict(list)
+            for it in its:
+                ties[it.parent_row_uids[0] if it.parent_row_uids else (it.variant_group or it.uid)].append(it)
+            for grp in ties.values():
+                votes = Counter(it.umbrella for it in grp if it.umbrella)
+                if votes:
+                    winner = votes.most_common(1)[0][0]
+                    for it in grp:
+                        it.umbrella = winner
+            groups = Counter(it.umbrella for it in its if it.umbrella)
+            if groups:
+                self.log(f"Div {div}: {len(its)} item(s) in {len(groups)} product group(s): "
+                         + ", ".join(f"{g} ({n})" for g, n in groups.most_common()))
 
     def _keep_variants_together(self, doc: BOQDocument) -> None:
         """General rule: one product in different sizes / colours / codes stays in one work package."""

@@ -118,6 +118,7 @@ PAGE_NOISE_RE = re.compile(
     r"(صفحه|\bpage\b|ما قبله|مرحل|carried forward|brought forward|issue date|rev\.?\s*no|تاريخ الاصدار)", re.I)
 L1_RE = re.compile(
     r"^\W*(section|sec\.?)\s*[:\-]?\s*\d|^\W*\d{2}\s?\d{2}\s?\d{2}\b|"
+    r"^\W*[a-z]{3,8}\.?\s*[:\-]?\s*\d{2}\s?\d{2}\s?\d{2}\b(\s*\(cont.{0,4}\))?\s*$|"   # 'SecEon 102116' (mangled 'Section')
     r"^\W*(قسم|اولا|ثانيا|ثالثا|رابعا|خامسا|سادسا|سابعا|ثامنا|تاسعا|عاشرا)\b", re.I)
 LETTER_SUB_RE = re.compile(r"^\(?([ء-ي]|[a-zA-Z])\)?[\-\.)]?$")
 LUMP_TOKENS = {"rate only", "بالسعر فقط", "lump sum", "ls", "l.s", "مقطوعيه", "مقطوعية", "مقطوعي", "item", "lot"}
@@ -147,6 +148,14 @@ def is_child(key: str, base: Optional[str]) -> bool:
 def _clean_unit(u: str) -> str:
     u = (u or "").strip()
     return u if (u and has_text(u) and len(u) <= 20 and not re.search(r"\d{3,}", u)) else ""
+
+
+def _is_repeated_header(row: Row) -> bool:
+    """2+ cells that are column titles and nothing numeric → a repeated table header row."""
+    vals = [v for v in row.fields.values() if v] + ([row.text] if row.text else [])
+    if any(parse_number(v) not in (None, 0) for v in vals):
+        return False
+    return len({f for f in (match_header_cell(v) for v in vals) if f}) >= 2
 
 
 def _is_leaf(row: Row) -> bool:
@@ -220,6 +229,11 @@ def build_structure(rows: list[Row], scope_prefix: str, default_title: str, shee
         has_desc = has_text(row.text)
 
         if not leaf and not has_desc and not key:
+            row.role = "blank"
+            continue
+
+        if _is_repeated_header(row):
+            # the table header printed again at the top of a page ("ITEM | DESCRIPTION | UNIT | QTY") — not an item
             row.role = "blank"
             continue
 

@@ -98,7 +98,8 @@ def variant_groups(doc: BOQDocument, cfg: dict) -> dict[str, str]:
                     same = (not a and not b) or a == b or _jaccard(a, b) >= thr
                 elif not pp and not cp:
                     a, b = skeleton(prev.full_description, ignore, code_re), skeleton(it.full_description, ignore, code_re)
-                    same = _jaccard(a, b) >= thr
+                    # a line that only gives a size ("1400x1000mm.") belongs to the product above it
+                    same = _jaccard(a, b) >= thr or (not skeleton(it.description, ignore, code_re) and bool(a))
                     if (not same and prev.headings and prev.headings == it.headings
                             and len(norm(prev.headings[-1])) >= 40      # the heading itself describes the product
                             and len(norm(prev.description)) < 60 and len(norm(it.description)) < 60):

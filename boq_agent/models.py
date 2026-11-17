@@ -67,6 +67,7 @@ class Item(BaseModel):
     keyword_hint: Optional[str] = None
     reason: str = ""
     variant_group: Optional[str] = None   # uid of the first item of its size/colour/code variant group
+    umbrella: Optional[str] = None        # product group (same purpose / same product in other sizes) for item-by-item divisions
 
     def llm_text(self, max_parent: int = 260, max_desc: int = 320) -> str:
         from .text_utils import truncate

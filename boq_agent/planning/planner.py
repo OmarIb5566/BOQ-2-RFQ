@@ -6,7 +6,7 @@ from typing import Optional
 
 from ..knowledge.rules import MISC, FlowchartRules
 from ..models import BOQDocument, Item, Plan, Proposal, WorkPackage
-from ..text_utils import truncate
+from ..text_utils import norm, truncate
 
 
 class Planner:
@@ -14,17 +14,28 @@ class Planner:
         self.rules = rules
 
     # ----------------------------------------------------------------- keys
+    def _cat(self, it: Item) -> Optional[str]:
+        """Packaging category (internal marble is packaged with external marble …)."""
+        return self.rules.package_alias.get(it.category, it.category)
+
     def _default_key(self, it: Item, doc_secs) -> str:
         """Where the item goes when NO special case is applied (= the 'deny' world)."""
         s = doc_secs[it.section_uid]
         mode = self.rules.mode(s.division)
         if mode == "split":
-            if it.category in self.rules.split_ids:
-                return it.category
+            if self._cat(it) in self.rules.split_ids:
+                return self._cat(it)
             return f"{MISC}{s.division}"
         if mode == "per_item":
-            # one WP per BOQ *description*: sub-items (AR 21.1, 21.2 …) stay with their parent (AR 21.0),
-            # and sizes / colours / codes of one product stay together (variant group)
+            # one WP per product group ("umbrella"): items of the same MasterFormat section group
+            # (Section 10 28 00 → all toilet accessories), else the same parent description (AR 21.1, 21.2 …),
+            # else the same product in other sizes / colours / codes (variant group)
+            if it.umbrella:                                  # product group from the classifier
+                return f"ITEM:UG:{norm(it.umbrella)}"
+            if self.rules.divisions.get(s.division or "", {}).get("group_by") == "masterformat":
+                g = self.rules.mf_group(s.division, list(reversed(it.headings)) + [it.parent_text, it.description])
+                if g:
+                    return f"ITEM:MF{g}"
             return f"ITEM:{it.parent_row_uids[0] if it.parent_row_uids else (it.variant_group or it.uid)}"
         return f"DIV{s.division}" if s.division else f"SEC:{s.uid}"
 
@@ -52,21 +63,22 @@ class Planner:
         plan = Plan()
 
         default = {it.uid: self._default_key(it, secs) for it in items}
-        present = {default[it.uid] for it in items if it.category not in specials}
+        present = {default[it.uid] for it in items if self._cat(it) not in specials}
         assign: dict[str, str] = {}
         rule_tags: dict[str, set[str]] = defaultdict(set)
 
         # 1) special categories (ovals)
         groups: dict[tuple, list[Item]] = OrderedDict()
         for it in items:
-            if it.category not in specials:
+            cat = self._cat(it)
+            if cat not in specials:
                 assign[it.uid] = default[it.uid]
                 continue
-            rule = self.rules.rule_for_category(it.category)
+            rule = self.rules.rule_for_category(cat)
             if rule is None:
-                assign[it.uid] = it.category
+                assign[it.uid] = cat
                 continue
-            fallback = it.category
+            fallback = cat
             approve = self._resolve(rule["approve"], it, default[it.uid], present)
             deny = self._resolve(rule["deny"], it, default[it.uid], present) or fallback
             if approve is None:
@@ -188,6 +200,13 @@ class Planner:
             en, ar, div = self._names(base, its, secs)
             label = self._fmap[fid].label if fid in getattr(self, "_fmap", {}) else fid
             return f"{en} — {label}", (f"{ar} — {label}" if ar else ""), div
+        if key.startswith("ITEM:UG:"):
+            it = its[0]
+            return f"Div {secs[it.section_uid].division}: {it.umbrella}", "", secs[it.section_uid].division or ""
+        if key.startswith("ITEM:MF"):
+            code = key[len("ITEM:MF"):]
+            title = self.rules.mf_titles.get(code) or f"Section {code[:2]} {code[2:]} 00"
+            return f"Div {code[:2]}: {title}", "", code[:2]
         if key.startswith("ITEM:"):
             it = its[0]
             s = secs[it.section_uid]

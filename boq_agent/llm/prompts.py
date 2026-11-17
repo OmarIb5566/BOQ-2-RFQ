@@ -138,3 +138,35 @@ HEADER_SCHEMA = {
     },
     "required": ["header_first_row", "header_last_row", "item_no", "description", "unit", "quantity", "rate", "total"],
 }
+
+
+UMBRELLA_TASK = """These are the Division {division} {division_name} items of a BOQ, in BOQ order. Group them into work packages for RFQs (one package = one specialist supplier).
+
+Put in the SAME group:
+- the same product in different sizes, dimensions, capacities, types, models or codes (e.g. mirrors 1400x1000 and 3000x1000; fire extinguishers FE-1 / FE-2 / FE-3; grab bars AC-03 … AC-06);
+- items that serve the same purpose or come from the same kind of supplier (e.g. ALL toilet / washroom accessories together: hand dryer, hooks, grab bars, paper / soap dispensers, waste receptacles, urinal screens; all signage together; all toilet partitions / cubicles together; all fire-protection specialties together).
+A line that only gives a size or capacity belongs with the product described above it.
+Keep groups BROAD: never split one family by location, material or finish (internal and external signage are ONE \
+signage group; framed and frameless mirrors are ONE mirrors group). A group name must describe ONLY what is in it.
+Only give an item its own group when it is genuinely unrelated to every other item.
+Name each group in 2-5 English words (e.g. "Toilet Accessories", "Mirrors", "Fire Extinguishers", "Signage").
+{existing}
+Items:
+{items}"""
+
+
+def umbrella_schema(ids: list[str]) -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            "results": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {"item_id": {"type": "string", "enum": ids}, "group": {"type": "string"}},
+                    "required": ["item_id", "group"],
+                },
+            }
+        },
+        "required": ["results"],
+    }

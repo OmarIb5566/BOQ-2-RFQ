@@ -27,7 +27,7 @@
            "keywords": ["ابواب", "الابواب", "شبابيك", "الشبابيك", "الوميتال", "نجاره", "openings", "doors", "windows"]},
     "09": {"name_en": "Finishes", "name_ar": "أعمال التشطيبات", "mode": "split",
            "keywords": ["تشطيبات", "التشطيبات", "بياض", "محاره", "دهانات", "الدهانات", "ارضيات", "بلاط", "تكسيات", "finishes", "plaster", "painting", "flooring", "tiling"]},
-    "10": {"name_en": "Specialties", "name_ar": "الأعمال الخاصة", "mode": "per_item",
+    "10": {"name_en": "Specialties", "name_ar": "الأعمال الخاصة", "mode": "per_item", "group_by": "masterformat",
            "keywords": ["اعمال خاصه", "الاعمال الخاصه", "للاعمال الخاصه", "specialties", "specialities", "لوحات ارشاديه", "signage"]},
     "11": {"name_en": "Equipment", "name_ar": "المعدات", "mode": "as_is", "keywords": ["معدات", "equipment"]},
     "12": {"name_en": "Furnishings", "name_ar": "الأثاث والمفروشات", "mode": "as_is", "keywords": ["اثاث", "مفروشات", "furnishings", "furniture"]},
@@ -36,6 +36,7 @@
     "21": {"name_en": "Fire Suppression", "name_ar": "أعمال مكافحة الحريق", "mode": "as_is", "keywords": ["حريق", "مكافحه الحريق", "اطفاء", "fire fighting", "fire suppression", "sprinkler"]},
     "22": {"name_en": "Plumbing", "name_ar": "الأعمال الصحية", "mode": "as_is", "keywords": ["صحي", "الصحيه", "الاعمال الصحيه", "صرف", "تغذيه", "plumbing", "sanitary", "drainage"]},
     "23": {"name_en": "HVAC", "name_ar": "أعمال التكييف والتهوية", "mode": "as_is", "keywords": ["تكييف", "تهويه", "hvac", "air conditioning", "ventilation"]},
+    "25": {"name_en": "Integrated Automation", "name_ar": "أنظمة التحكم والأتمتة المتكاملة", "mode": "as_is", "keywords": ["integrated automation", "bms", "building management", "التحكم المركزي", "ادارة المباني"]},
     "26": {"name_en": "Electrical", "name_ar": "الأعمال الكهربائية", "mode": "as_is", "keywords": ["كهرباء", "الكهربائيه", "اناره", "electrical", "lighting", "power"]},
     "27": {"name_en": "Communications", "name_ar": "أعمال الاتصالات", "mode": "as_is", "keywords": ["اتصالات", "تيار خفيف", "communications", "data", "telephone"]},
     "28": {"name_en": "Electronic Safety & Security", "name_ar": "أنظمة الأمن والإنذار", "mode": "as_is", "keywords": ["انذار", "كاميرات", "مراقبه", "fire alarm", "cctv", "security"]},
@@ -89,7 +90,7 @@
     "EPOXY_PAINT": {"division": "09", "name_en": "Epoxy Paint", "name_ar": "دهانات الإيبوكسي",
       "definition": "Epoxy paints / epoxy floor coatings / self-levelling epoxy (إيبوكسي).",
       "keywords": ["ايبوكسي", "ابوكسي", "epoxy"]},
-    "INTERNAL_STONE": {"division": "09", "name_en": "Internal Marble / Granite / Stone", "name_ar": "رخام وجرانيت وحجر داخلي",
+    "INTERNAL_STONE": {"division": "09", "package_with": "EXTERNAL_MARBLE", "name_en": "Internal Marble / Granite / Stone", "name_ar": "رخام وجرانيت وحجر داخلي",
       "definition": "Marble (رخام), granite (جرانيت) or any natural stone (حجر) for INTERNAL floors, walls, stairs, sills, thresholds, skirting — internal finishes only.",
       "keywords": ["رخام", "جرانيت", "حجر", "marble", "granite", "stone"]},
     "ACRYLIC_PAINT": {"division": "09", "name_en": "Acrylic Paint", "name_ar": "دهانات الأكريليك (البلاستيك)",
@@ -130,7 +131,7 @@
       "definition": "Planting works: trees, palms, shrubs, ground covers, grass / turf, seeding, agricultural soil, fertiliser and soil improvement for planting (أعمال الزراعة، أشجار، نخيل، شجيرات، نجيل، تربة زراعية).",
       "keywords": ["زراعه", "الزراعه", "اشجار", "نخيل", "شجيرات", "نجيل", "حشائش", "تربه زراعيه", "طمي", "سماد", "planting", "plants", "trees", "palms", "shrubs", "groundcover", "ground cover", "turf", "grass", "lawn", "topsoil", "top soil"]},
 
-    "EXTERNAL_MARBLE": {"division": "04", "special": true, "name_en": "External Marble / Stone Cladding", "name_ar": "رخام خارجي (تكسيات الواجهات)",
+    "EXTERNAL_MARBLE": {"division": "04", "special": true, "name_en": "Marble / Granite / Stone (Internal & External)", "name_ar": "أعمال الرخام والجرانيت والحجر (داخلي وخارجي)",
       "definition": "Marble, granite or stone used OUTSIDE the building: facade cladding, external copings, external sills/steps, external wall stone (رخام / جرانيت / حجر للواجهات الخارجية).",
       "keywords": ["رخام", "جرانيت", "حجر", "marble", "granite", "stone"],
       "requires_any": ["خارجي", "خارجيه", "واجهات", "واجهه", "الواجهات", "external", "exterior", "facade", "façade", "facades", "cladding", "coping", "تكسيه", "تكسيات"]},
@@ -161,10 +162,10 @@
       "flowchart": "Div 4 Masonry → 'External Marble (رخام خارجي)' oval, also linked from Div 9 Finishes. Note: 'If present in the BOQ, to be bundled with masonry. If not, then masonry will be a pkg alone.'",
       "approve": {"type": "merge_into", "target": "DIV04", "only_if_target_exists": true},
       "deny": {"type": "standalone", "target": "EXTERNAL_MARBLE"},
-      "title_en": "External marble → bundled with Masonry",
-      "title_ar": "الرخام الخارجي ← يُضم إلى أعمال المباني",
-      "message_en": "{n} external marble/stone item(s) from {sources} will be GROUPED with the Div 4 Masonry work package (flowchart special case). Approve to bundle them with masonry, or Deny to issue External Marble as its own separate work package.",
-      "message_ar": "سيتم ضم عدد {n} بند رخام/حجر خارجي من ({sources}) إلى باقة أعمال المباني (الباب الرابع) طبقاً للحالة الخاصة في المخطط. وافق للضم، أو ارفض لإصدار الرخام الخارجي كباقة عمل مستقلة."
+      "title_en": "Marble (internal & external) → bundled with Masonry",
+      "title_ar": "الرخام (داخلي وخارجي) ← يُضم إلى أعمال المباني",
+      "message_en": "{n} marble / granite / stone item(s) — internal and external, all kept together in one package — from {sources} will be GROUPED with the Div 4 Masonry work package (flowchart special case). Approve to bundle them with masonry, or Deny to issue all the marble as its own separate work package.",
+      "message_ar": "سيتم ضم عدد {n} بند رخام / جرانيت / حجر (داخلي وخارجي، في باقة واحدة) من ({sources}) إلى باقة أعمال المباني (الباب الرابع) طبقاً للحالة الخاصة في المخطط. وافق للضم، أو ارفض لإصدار أعمال الرخام كلها كباقة عمل مستقلة."
     },
     {
       "id": "R2_ROOF_TILES",
@@ -229,10 +230,10 @@
       "flowchart": "Div 10 Specialties → oval 'Each BOQ Description/Item under this is to be an individual WP'.",
       "approve": {"type": "per_item"},
       "deny": {"type": "as_is"},
-      "title_en": "Div 10 Specialties → one work package per item",
+      "title_en": "Div 10 Specialties → one work package per product group",
       "title_ar": "الأعمال الخاصة ← باقة عمل لكل بند",
-      "message_en": "Div 10 Specialties in {sources} has {n} BOQ description(s). Each description (with its sub-items) will become its OWN work package (flowchart special case). Deny to keep Div 10 as a single work package as written in the BOQ.",
-      "message_ar": "باب الأعمال الخاصة في ({sources}) يحتوي على {n} بند رئيسي. سيصبح كل بند (مع بنوده الفرعية) باقة عمل مستقلة (حالة خاصة في المخطط). ارفض لإبقاء الباب كباقة واحدة كما هو مكتوب في المقايسة."
+      "message_en": "Div 10 Specialties in {sources} has {n} product group(s). Each group — items under the same umbrella, e.g. all toilet accessories, all fire-protection items, all signage — will become its OWN work package (flowchart special case). Deny to keep Div 10 as a single work package as written in the BOQ.",
+      "message_ar": "باب الأعمال الخاصة في ({sources}) يحتوي على {n} مجموعة بنود. ستصبح كل مجموعة (بنود من نفس النوع، مثل كل إكسسوارات الحمامات أو كل أعمال الحريق أو كل اللوحات الإرشادية) باقة عمل مستقلة (حالة خاصة في المخطط). ارفض لإبقاء الباب كباقة واحدة كما هو مكتوب في المقايسة."
     }
   ],
 

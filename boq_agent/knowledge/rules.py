@@ -61,6 +61,21 @@ class FlowchartRules:
         self._ls_codes = [re.compile(p, re.I) for p in ld.get("code_patterns", [])]
         self._ls_min_codes = int(ld.get("min_code_hits", 2))
         self.variants: dict = data.get("variants", {})
+        # a category whose items are packaged together with another one (all marble: internal + external)
+        self.package_alias: dict[str, str] = {cid: c["package_with"] for cid, c in data["categories"].items()
+                                              if c.get("package_with")}
+        mf = self.path.parent / "masterformat_titles.json"
+        self.mf_titles: dict[str, str] = json.loads(mf.read_text(encoding="utf-8"))["titles"] if mf.exists() else {}
+
+    def mf_group(self, division: Optional[str], texts: list[str]) -> Optional[str]:
+        """MasterFormat group ('1028') of the nearest 'Section 10 28 00' style code in the texts (nearest first)."""
+        if not division:
+            return None
+        for t in texts:
+            for m in re.finditer(r"(?<!\d)(\d{2})\s?(\d{2})\s?(\d{2})(?!\d)", t or ""):
+                if m.group(1) == division:
+                    return m.group(1) + m.group(2)
+        return None
 
     # ------------------------------------------------------------------ lookups
     def mode(self, division: Optional[str]) -> str:

@@ -1,0 +1,24 @@
+# /etc/systemd/system/boq2rfq-web.service — the web server (Waitress) behind nginx
+[Unit]
+Description=BOQ -> RFQ web app
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=boq2rfq
+Group=boq2rfq
+WorkingDirectory=/opt/boq2rfq
+Environment=BOQ_CONFIG=/etc/boq2rfq/boq2rfq.toml
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/boq2rfq/.venv/bin/python server.py --host 127.0.0.1 --port 8080 --no-browser
+Restart=on-failure
+RestartSec=5
+# hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

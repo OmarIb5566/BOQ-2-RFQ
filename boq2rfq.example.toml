@@ -1,0 +1,45 @@
+# BOQ → RFQ — the one settings file of an installation.
+# Copy this file to  boq2rfq.toml  (next to server.py) or point BOQ_CONFIG at it, and change what you need.
+# Every key is the name of an environment variable; a variable that is already set in the environment wins.
+# The server and the worker read it at start-up: restart both after a change.
+
+[paths]
+# Where projects (uploads, outputs) are stored. The database and the secret key live in "instance" next to it
+# unless BOQ_INSTANCE says otherwise. Keep the database on a LOCAL disk (SQLite must not live on a network share);
+# the workspace may be a network share.
+BOQ_WORKSPACE = "/srv/boq2rfq/workspace"
+# BOQ_INSTANCE = "/srv/boq2rfq/instance"
+
+[server]
+BOQ_WORKER = "external"            # external = run worker.py as its own service; inline = one PC, no service
+BOQ_HTTPS = 1                      # the users reach the app over HTTPS (Secure cookies, HSTS)
+BOQ_BEHIND_PROXY = 1               # nginx / IIS in front of the app (trust X-Forwarded-For/-Proto/-Host)
+BOQ_IDLE_MINUTES = 60              # sign out after this many idle minutes
+BOQ_REMEMBER_DAYS = 7              # "keep me signed in"
+BOQ_MAX_UPLOAD_MB = 4096
+BOQ_MAX_PDF_PAGES = 3000
+BOQ_MAX_IMAGE_MP = 200             # megapixels per image
+BOQ_TRASH_DAYS = 30                # deleted projects are removed for good after this many days
+BOQ_DEFAULT_LANG = "en"            # "ar" for an Arabic interface by default (each user can switch)
+
+[ai]
+OLLAMA_URL = "http://127.0.0.1:11434"      # the model server (use the IP, not "localhost")
+BOQ_LLM_MODEL = "gemma4:e4b"               # defaults; the administrator can change them on Admin › AI models
+BOQ_VISION_MODEL = "qwen2.5vl:7b"
+BOQ_EMBED_MODEL = "bge-m3"
+BOQ_VERIFY_MODEL = "qwen3:14b"
+BOQ_MODEL_PROFILE = "staged"               # staged = one GPU; resident = several GPUs, every model stays loaded
+BOQ_PARALLEL_TEXT = 1                      # parallel calls per role (raise only with several GPUs / replicas)
+
+[sign_in]
+BOQ_AUTH = "local"                         # local | ldap | ldap+local     (values below come from IT)
+# BOQ_LDAP_URL = "ldaps://dc01.company.local:636"
+# BOQ_LDAP_USER_DN = "{username}@company.local"
+# BOQ_LDAP_BASE_DN = "dc=company,dc=local"
+# BOQ_LDAP_USER_FILTER = "(sAMAccountName={username})"
+# BOQ_LDAP_ROLE_MAP = "CN=BOQ-Admins,OU=Groups,DC=company,DC=local=admin; CN=BOQ-Managers,OU=Groups,DC=company,DC=local=manager; CN=BOQ-Engineers,OU=Groups,DC=company,DC=local=engineer; CN=BOQ-Viewers,OU=Groups,DC=company,DC=local=viewer"
+# BOQ_LDAP_DEFAULT_ROLE = ""                 # "" = people in none of the groups may not sign in
+
+[ocr]
+# TESSERACT_DIR = "/usr/bin"                 # Windows default: C:\Program Files\Tesseract-OCR
+BOQ_EXCEL_RENDERER = "auto"                  # auto | excel | html   (Excel only exists on Windows)

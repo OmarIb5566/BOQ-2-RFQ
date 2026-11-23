@@ -32,3 +32,10 @@ dist/
 .venv-dev/
 .pytest_cache/
 test-artifacts/
+
+# Local settings and service logs
+boq2rfq.toml
+logs/
+
+# Benchmark outputs (numbers about client projects - kept local)
+bench/results/

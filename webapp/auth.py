@@ -9,7 +9,7 @@ from flask import (Blueprint, abort, current_app, flash, g, jsonify, redirect, r
                    url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from . import security
+from . import identity, perms, security
 from .db import now
 
 bp = Blueprint("auth", __name__)
@@ -50,7 +50,7 @@ def load_user():
 
 @bp.app_context_processor
 def inject():
-    return {"me": g.get("user"), "csrf_token": session.get("csrf", "")}
+    return {"me": g.get("user"), "csrf_token": session.get("csrf", ""), "role_names": perms.ROLE_LABEL}
 
 
 def login_required(view):
@@ -122,10 +122,10 @@ def login():
             flash(f"Too many wrong passwords. Try again in {max(1, round(wait / 60))} minute(s), "
                   "or ask an administrator to reset your password.", "error")
             return render_template("auth/login.html"), 429
-        u = db().one("SELECT * FROM users WHERE username=? AND active=1", (username,))
-        ok = check_password_hash(u["pw_hash"] if u else _DUMMY_HASH, request.form.get("password", ""))
-        if u and ok:
+        u, why = identity.authenticate(db(), username, request.form.get("password", ""), _DUMMY_HASH)
+        if u:
             security.login_succeeded(db(), username)
+            db().audit("sign-in", u["id"], ip=ip)
             session.clear()
             _start_session(u, remember=bool(request.form.get("remember")))
             db().x("UPDATE users SET last_login=? WHERE id=?", (now(), u["id"]))
@@ -133,6 +133,7 @@ def login():
             return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") and "\\" not in nxt
                             else url_for("main.projects"))
         security.login_failed(db(), username, ip)
+        db().audit("sign-in failed", None, ip=ip, username=username[:40], reason=why)
         flash("Wrong user name or password.", "error")
     return render_template("auth/login.html", remember_days=current_app.config["REMEMBER_SECONDS"] // 86400)
 
@@ -158,6 +159,7 @@ def account():
                 db().x("UPDATE users SET pw_hash=?, ses_ver=ses_ver+1 WHERE id=?",
                        (generate_password_hash(pw), g.user["id"]))
                 session["sv"] = g.user["ses_ver"] + 1           # this session stays; all others end
+                db().audit("password changed", g.user["id"], ip=request.remote_addr)
                 flash("Password changed. You were signed out everywhere else.", "ok")
         name = request.form.get("full_name")
         if name is not None and name.strip() != g.user["full_name"]:
@@ -175,7 +177,10 @@ def users():
         if act == "add":
             err = _create_user(request.form.get("username", ""), request.form.get("full_name", ""),
                                request.form.get("password", ""), request.form.get("password", ""),
-                               "admin" if request.form.get("role") == "admin" else "user")
+                               _role(request.form.get("role")))
+            if not err:
+                db().audit("user added", g.user["id"], ip=request.remote_addr,
+                           username=request.form.get("username", "").strip(), role=_role(request.form.get("role")))
             flash(err or "User added — give them their user name and password.", "error" if err else "ok")
         elif act == "reset" and uid:
             pw = request.form.get("password", "")
@@ -184,24 +189,33 @@ def users():
                 db().x("UPDATE users SET pw_hash=?, ses_ver=ses_ver+1 WHERE id=?", (generate_password_hash(pw), uid))
                 security.login_succeeded(db(), (db().one("SELECT username FROM users WHERE id=?", (uid,))
                                                 or {"username": ""})["username"])   # lift a lock-out
+            if not err:
+                db().audit("password reset", g.user["id"], ip=request.remote_addr, target_user=uid)
             flash(err or "Password reset — the user is signed out everywhere.", "error" if err else "ok")
         elif act in ("disable", "enable") and uid:
             if uid == g.user["id"]:
                 flash("You cannot disable your own account.", "error")
             else:
                 db().x("UPDATE users SET active=? WHERE id=?", (1 if act == "enable" else 0, uid))
+                db().audit(f"user {act}d", g.user["id"], ip=request.remote_addr, target_user=uid)
                 flash("User " + ("enabled." if act == "enable" else "disabled — their projects stay."), "ok")
         elif act == "role" and uid and uid != g.user["id"]:
-            db().x("UPDATE users SET role=? WHERE id=?",
-                   ("admin" if request.form.get("role") == "admin" else "user", uid))
+            db().x("UPDATE users SET role=? WHERE id=?", (_role(request.form.get("role")), uid))
+            db().audit("role changed", g.user["id"], ip=request.remote_addr, target_user=uid,
+                       role=_role(request.form.get("role")))
             flash("Role changed.", "ok")
         return redirect(url_for("auth.users"))
     rows = db().q("SELECT u.*, (SELECT COUNT(*) FROM projects p WHERE p.owner_id=u.id AND p.deleted=0) n "
                   "FROM users u ORDER BY u.active DESC, u.username")
-    return render_template("auth/users.html", users=rows)
+    return render_template("auth/users.html", users=rows, roles=perms.ROLES, role_label=perms.ROLE_LABEL,
+                           auth_mode=identity.mode())
 
 
 # ------------------------------------------------------------------ helpers
+def _role(v) -> str:
+    return v if v in perms.ROLES else "engineer"
+
+
 _DUMMY_HASH = generate_password_hash(secrets.token_hex(8))      # same work for unknown user names (no timing hint)
 
 

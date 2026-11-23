@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Compare revisions") }} · {{ p.name }}{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="{{ url_for('main.projects') }}">{{ _("Projects") }}</a> › <a href="{{ url_for('main.project', run_id=p.run_id) }}">{{ p.name }}</a> › <a href="{{ url_for('revisions_views.revisions', run_id=p.run_id) }}">{{ _("Revisions & history") }}</a> › {{ _("Compare") }}</div>
+<h1>{{ _("What changed") }}</h1>
+<p class="muted"><b>{{ o.name }}</b> → <b>{{ p.name }}</b></p>
+<div class="row" style="margin-bottom:1rem; gap:.4rem">
+  <span class="tag ok">{{ _("New") }} · {{ res.counts.new }}</span>
+  <span class="tag warn">{{ _("Changed") }} · {{ res.counts.changed }}</span>
+  <span class="tag bad">{{ _("Removed") }} · {{ res.counts.removed }}</span>
+  <span class="tag">{{ _("Unchanged") }} · {{ res.counts.unchanged }}</span>
+</div>
+
+<h3>{{ _("Work packages") }}</h3>
+<div class="card table-wrap" style="margin-bottom:1.2rem">
+<table class="t">
+  <thead><tr><th>{{ _("Work package") }}</th><th class="right">{{ _("New") }}</th><th class="right">{{ _("Changed") }}</th><th class="right">{{ _("Removed") }}</th><th class="right">{{ _("Unchanged") }}</th><th>{{ _("RFQ") }}</th></tr></thead>
+  <tbody>{% for x in res.packages %}
+  <tr class="{{ 'diff-changed' if x.addendum }}"><td>{{ x.name }}</td><td class="right">{{ x.new or '' }}</td><td class="right">{{ x.changed or '' }}</td><td class="right">{{ x.removed or '' }}</td><td class="right">{{ x.unchanged }}</td>
+    <td class="small">{% if x.addendum %}<b class="overdue">⚠ {{ _("RFQ already issued — send an addendum") }}</b>{% elif x.issued %}{{ _("issued, no change") }}{% endif %}</td></tr>
+  {% endfor %}</tbody>
+</table>
+</div>
+
+<div class="row between"><h3>{{ _("Items") }}</h3>
+  <div class="seg"><a class="{{ 'on' if show != 'all' }}" href="?with={{ o.run_id }}&show=changes">{{ _("Changes only") }}</a><a class="{{ 'on' if show == 'all' }}" href="?with={{ o.run_id }}&show=all">{{ _("All items") }}</a></div></div>
+<div class="card table-wrap scroll-y">
+<table class="t">
+  <thead><tr><th>{{ _("Status") }}</th><th>{{ _("Item") }}</th><th>{{ _("Description") }}</th><th>{{ _("Unit") }}</th><th class="right">{{ _("Qty before") }}</th><th class="right">{{ _("Qty now") }}</th><th>{{ _("Package") }}</th></tr></thead>
+  <tbody>
+  {% for r in rows %}{% set it = r.new or r.old %}
+  <tr class="diff-{{ r.status }}">
+    <td class="small"><b>{{ _(r.status) }}</b>{% if r.changes %}<div class="faint">{{ r.changes|join(', ') }}</div>{% endif %}</td>
+    <td class="small nowrap">{{ it.item_no }}</td>
+    <td class="small" dir="auto">{{ it.full_description[:220] }}{% if 'description' in r.changes %}<div class="faint">{{ _("before") }}: {{ r.old.full_description[:220] }}</div>{% endif %}</td>
+    <td class="small">{{ it.unit }}</td>
+    <td class="right small">{{ r.old.quantity if r.old else '' }}</td>
+    <td class="right small">{{ r.new.quantity if r.new else '' }}</td>
+    <td class="small">{{ r.wp_new.name_en if r.wp_new else (r.wp_old.name_en if r.wp_old else '') }}{% if 'package' in r.changes and r.wp_old %}<div class="faint">{{ _("before") }}: {{ r.wp_old.name_en }}</div>{% endif %}</td>
+  </tr>
+  {% else %}<tr><td colspan="7" class="muted">{{ _("No differences.") }}</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

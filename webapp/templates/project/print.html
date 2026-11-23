@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ p.name }} · {{ _("Print") }}{% endblock %}
+{% block content %}
+<div class="row between no-print" style="margin-bottom:1rem">
+  <a href="{{ url_for('main.project', run_id=p.run_id) }}">← {{ p.name }}</a>
+  <button type="button" class="btn primary" data-print>🖨 {{ _("Print") }}</button>
+</div>
+<h1>{{ p.name }}</h1>
+<p class="muted">{{ t_summary(p.summary) }} · {{ _("owner") }} {{ p.owner_name or '—' }} · {{ _("printed") }} {{ printed[:16].replace('T', ' ') }}</p>
+
+<h2>{{ _("Work packages") }}</h2>
+<table class="t" style="margin-bottom:1.2rem">
+  <thead><tr><th>#</th><th>{{ _("Work package") }}</th><th class="right">{{ _("Items") }}</th></tr></thead>
+  <tbody>{% for x in packages %}<tr><td>{{ x.wp.wp_id }}</td><td>{{ x.wp.name_en }}{% if x.wp.name_ar %} <span dir="rtl">· {{ x.wp.name_ar }}</span>{% endif %}</td><td class="right">{{ x['items']|length }}</td></tr>{% endfor %}</tbody>
+</table>
+
+{% set decided = s.plan.proposals %}
+{% if decided %}
+<h2>{{ _("Special cases") }}</h2>
+<table class="t" style="margin-bottom:1.2rem">
+  <thead><tr><th>{{ _("Case") }}</th><th>{{ _("Decision") }}</th></tr></thead>
+  <tbody>{% for c in decided %}<tr><td>{{ c.title_en if c.title_en is defined else c.proposal_id }}</td><td>{{ _(c.decision) }}</td></tr>{% endfor %}</tbody>
+</table>
+{% endif %}
+
+{% for x in packages %}
+<div class="print-break"></div>
+<h2>{{ x.wp.wp_id }} · {{ x.wp.name_en }}</h2>
+<table class="t">
+  <thead><tr><th>{{ _("Item") }}</th><th>{{ _("Description") }}</th><th>{{ _("Unit") }}</th><th class="right">{{ _("Qty") }}</th></tr></thead>
+  <tbody>{% for it in x['items'] %}<tr><td class="nowrap">{{ it.item_no }}</td><td dir="auto">{{ it.full_description[:400] }}</td><td>{{ it.unit }}</td><td class="right">{{ it.quantity }}</td></tr>{% endfor %}</tbody>
+</table>
+{% endfor %}
+{% endblock %}

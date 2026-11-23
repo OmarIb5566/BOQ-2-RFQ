@@ -44,6 +44,9 @@ class BOQAgent:
                                 self.settings.num_ctx, self.settings.request_timeout)
         self.planner = Planner(self.rules)
         self._session_log: list[str] = []
+        # called after items were classified: fn(agent, doc, classifier, section_uids or None) — used by the web
+        # app's AI fleet (memory of user corrections, second-opinion verification)
+        self.classify_hooks: list[Callable] = []
 
     def log(self, msg: str) -> None:
         self._session_log.append(f"{dt.datetime.now():%H:%M:%S} {msg}")
@@ -173,6 +176,7 @@ class BOQAgent:
         clf.assign_divisions(doc)
         self.progress(0.25, "Classifying items against the flowchart …")
         clf.classify_items(doc)
+        self._after_classify(doc, clf, None)
 
         session = Session(run_id=run_id, created=dt.datetime.now().isoformat(timespec="seconds"), document=doc,
                           documents=pdocs)
@@ -188,6 +192,10 @@ class BOQAgent:
         self.save(session)
         self.progress(1.0, "Analysis complete")
         return session
+
+    def _after_classify(self, doc, clf, sections) -> None:
+        for hook in self.classify_hooks:
+            hook(self, doc, clf, sections)
 
     # -------------------------------------------------------------- user edits
     def decide(self, session: Session, proposal_id: str, decision: str) -> Session:
@@ -206,7 +214,9 @@ class BOQAgent:
         sec.division, sec.division_confidence, sec.division_method = division, 1.0, "manual"
         llm_ok = self.settings.use_llm and self.llm.status()[0]
         settings = self.settings if llm_ok else Settings(**{**self.settings.__dict__, "use_llm": False})
-        Classifier(self.rules, settings, self.llm, self.log, self.progress).classify_items(session.document, [section_uid])
+        clf = Classifier(self.rules, settings, self.llm, self.log, self.progress)
+        clf.classify_items(session.document, [section_uid])
+        self._after_classify(session.document, clf, [section_uid])
         return self.replan(session)
 
     def set_item_category(self, session: Session, item_uid: str, category: Optional[str]) -> Session:

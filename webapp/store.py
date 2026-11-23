@@ -32,6 +32,7 @@ class Store:
         self._cache_lock = threading.Lock()
         self._locks: dict[str, threading.RLock] = defaultdict(threading.RLock)
         self.max_cached = max_cached
+        self.on_saved: list = []          # fn(db, run_id, session) after every save (search index …)
 
     # ------------------------------------------------------------------ paths
     def run_dir(self, run_id: str) -> Path:
@@ -53,6 +54,7 @@ class Store:
                 self._cache.move_to_end(run_id)
                 return hit[1]
         s = Session.model_validate_json(p.read_text(encoding="utf-8"))
+        rebase_paths(s, self.run_dir(run_id))
         with self._cache_lock:
             self._cache[run_id] = (mtime, s)
             while len(self._cache) > self.max_cached:
@@ -93,6 +95,17 @@ class Store:
             s = self.load(run_id)
         self.db.upsert_project(run_id, stage=stage_of(s), summary=summary_of(s),
                                **({"updated_by": user_id} if user_id else {}))
+        self.db.x("UPDATE projects SET version=version+1 WHERE run_id=?", (run_id,))
+        for fn in self.on_saved:
+            try:
+                fn(self.db, run_id, s)
+            except Exception:  # noqa: BLE001  (an index must never break a save)
+                import traceback
+                traceback.print_exc()
+
+    def version(self, run_id: str) -> int:
+        r = self.db.one("SELECT version FROM projects WHERE run_id=?", (run_id,))
+        return int(r["version"]) if r else 0
 
     def agent(self, progress=None, log=None) -> BOQAgent:
         return BOQAgent(self.settings, log=log or (lambda m: None), progress=progress)
@@ -121,3 +134,51 @@ def summary_of(s: Session) -> str:
     if n_dwg:
         parts.append(f"{len(docs.sheets)} sheets")
     return " · ".join(parts)
+
+
+def rebase_paths(obj, run_dir: Path) -> int:
+    """Paths in session.json are absolute (the engine's format). When the data folder was moved — restored on another
+    server, a different drive, a network share — every path that points into the old copy of THIS project's folder
+    is re-pointed into its current folder. Returns the number of paths changed."""
+    run_dir = Path(run_dir)
+    changed = 0
+
+    def fix(v: str):
+        nonlocal changed
+        if not v or ("/" not in v and "\\" not in v):
+            return v
+        parts = Path(v.replace("\\", "/")).parts
+        if run_dir.name not in parts:
+            return v
+        if Path(v).exists() or Path(v).is_absolute() and str(Path(v)).startswith(str(run_dir)):
+            return v
+        i = len(parts) - 1 - parts[::-1].index(run_dir.name)
+        new = run_dir.joinpath(*parts[i + 1:])
+        changed += 1
+        return str(new)
+
+    def walk(o):
+        from pydantic import BaseModel
+        if isinstance(o, BaseModel):
+            for k in type(o).model_fields:
+                v = getattr(o, k)
+                if isinstance(v, str):
+                    nv = fix(v)
+                    if nv is not v:
+                        object.__setattr__(o, k, nv)
+                else:
+                    walk(v)
+        elif isinstance(o, dict):
+            for k, v in list(o.items()):
+                if isinstance(v, str):
+                    o[k] = fix(v)
+                else:
+                    walk(v)
+        elif isinstance(o, list):
+            for i, v in enumerate(o):
+                if isinstance(v, str):
+                    o[i] = fix(v)
+                else:
+                    walk(v)
+    walk(obj)
+    return changed

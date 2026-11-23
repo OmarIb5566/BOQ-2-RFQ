@@ -89,14 +89,19 @@ def make_app(settings, monkeypatch):
     for k in SECURITY_ENV:
         monkeypatch.delenv(k, raising=False)
 
+    made = []
+
     def _make(**env):
         for k, v in env.items():
             monkeypatch.setenv(k, str(v))
         from webapp import create_app
         app = create_app(settings)
         app.config["TESTING"] = True
+        made.append(app)
         return app
-    return _make
+    yield _make
+    for a in made:                      # stop the worker threads before the next test / interpreter exit
+        a.config["JOBS"].stop()
 
 
 @pytest.fixture

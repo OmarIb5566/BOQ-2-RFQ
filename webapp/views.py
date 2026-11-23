@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import shutil
+import os
 from collections import Counter, OrderedDict
-from dataclasses import asdict
 from functools import wraps
 from pathlib import Path
 
@@ -23,6 +22,8 @@ from boq_agent.ingest.sniff import HEAD_BYTES, check_head
 from boq_agent.knowledge.rules import MISC
 from boq_agent.text_utils import safe_filename, truncate
 
+from . import perms
+from .i18n import t
 from .auth import login_required
 from .db import now
 from .store import STAGE_LABEL, STAGES, stage_of, summary_of
@@ -45,9 +46,16 @@ def _row(run_id: str):
     if r is None:
         abort(404)
     r = dict(r)
-    if not (g.user["role"] == "admin" or r["owner_id"] == g.user["id"] or r["shared"]):
+    db = cfg("DB")
+    if not perms.can_view(db, g.user, r):
         abort(403)
+    r["can_edit"] = perms.can_edit(db, g.user, r)
+    r["can_manage"] = perms.can_manage(g.user, r)
     return r
+
+
+# changes that do not touch the project content: no version check (they cannot overwrite anyone's work)
+NO_VERSION_CHECK = {"main.api_project", "main.api_rfq_preview", "main.api_duplicate"}
 
 
 def api(view):
@@ -56,18 +64,57 @@ def api(view):
     @login_required
     def wrapped(run_id, *a, **kw):
         try:
-            _row(run_id)
+            row = _row(run_id)
         except Exception:  # noqa: BLE001
             return jsonify(ok=False, error="Project not found or not shared with you."), 404
+        if not row["can_edit"] and request.endpoint not in ("main.api_rfq_preview", "main.api_duplicate"):
+            return jsonify(ok=False, error="You can view this project but not change it."), 403
+        if request.endpoint == "main.api_duplicate" and not perms.can_create(g.user):
+            return jsonify(ok=False, error="Your role cannot create projects."), 403
         job = cfg("JOBS").active_for(run_id)
-        if job and request.endpoint not in ("main.api_project", "main.api_draft"):
+        if job and request.endpoint not in ("main.api_project", "main.api_draft", "main.api_rfq_preview"):
             return jsonify(ok=False, error=f"Please wait — “{job['label']}” is running for this project."), 409
+        conflict = _version_conflict(run_id, row)
+        if conflict:
+            return jsonify(ok=False, conflict=True, **conflict), 409
         try:
             out = view(run_id, *a, **kw)
         except (ValueError, RuntimeError, KeyError) as e:
-            return jsonify(ok=False, error=str(e)), 400
-        return out if not isinstance(out, dict) else jsonify(ok=True, **out)
+            return jsonify(ok=False, error=t(str(e))), 400
+        if request.endpoint != "main.api_rfq_preview":
+            cfg("DB").audit(request.endpoint.split(".")[-1], g.user["id"], run_id, request.remote_addr,
+                            **_audit_detail())
+        if isinstance(out, dict):
+            if isinstance(out.get("message"), str):
+                out["message"] = t(out["message"])
+            out.setdefault("version", cfg("STORE").version(run_id))
+            return jsonify(ok=True, **out)
+        return out
     return wrapped
+
+
+def _version_conflict(run_id: str, row: dict) -> dict | None:
+    """Optimistic locking: the page sends the project version it was built from (X-Version). If someone else saved
+    the project since, the change is refused instead of silently overwriting their work."""
+    sent = request.headers.get("X-Version")
+    if not sent or request.endpoint in NO_VERSION_CHECK or not sent.isdigit():
+        return None
+    cur = cfg("STORE").version(run_id)
+    if int(sent) == cur:
+        return None
+    if row.get("updated_by") == g.user["id"]:
+        return None                    # my own earlier change (e.g. a job I started) — no one else's work at risk
+    who = row.get("updated_by_name") or "someone else"
+    return {"error": f"{who} changed this project {ago(row['updated'])} — reload to see their changes first.",
+            "by": who, "version": cur}
+
+
+def _audit_detail() -> dict:
+    b = request.get_json(silent=True)
+    if isinstance(b, dict):
+        txt = json.dumps({k: b[k] for k in list(b)[:8]}, ensure_ascii=False, default=str)
+        return {"fields": sorted(b.keys())[:20], "body": txt[:400]}
+    return {"form": sorted(request.form.keys())[:20]} if request.form else {}
 
 
 def body() -> dict:
@@ -90,9 +137,9 @@ def projects():
     q = request.args.get("q", "").strip()
     trash = request.args.get("trash") == "1"
     where, args = ["p.deleted=?"], [1 if trash else 0]
-    if g.user["role"] != "admin":
-        where.append("(p.owner_id=? OR p.shared=1)")
-        args.append(g.user["id"])
+    vis, vargs = perms.visible_sql(g.user)
+    where.append(vis)
+    args += list(vargs)
     if scope == "mine":
         where.append("p.owner_id=?")
         args.append(g.user["id"])
@@ -107,49 +154,99 @@ def projects():
     rows = db.q("SELECT p.*, u.full_name owner_name FROM projects p LEFT JOIN users u ON u.id=p.owner_id "
                 f"WHERE {' AND '.join(where)} ORDER BY p.starred DESC, p.updated DESC", tuple(args))
     counts = Counter(r["stage"] for r in db.q(
-        "SELECT stage FROM projects WHERE deleted=0" + ("" if g.user["role"] == "admin" else
-                                                        " AND (owner_id=? OR shared=1)"),
-        () if g.user["role"] == "admin" else (g.user["id"],)))
+        f"SELECT stage FROM projects p WHERE p.deleted=0 AND {vis}", tuple(vargs)))
     jobs = {j["run_id"]: j for j in (cfg("JOBS").view(r) for r in db.q(
         "SELECT * FROM jobs WHERE status IN ('queued','running')"))}
-    return render_template("projects.html", rows=[dict(r) for r in rows], scope=scope, stage=stage, q=q,
+    from .collab import maybe_schedule_purge
+    from .collab_views import saved_views
+    maybe_schedule_purge(cfg("RUNTIME"), int(os.getenv("BOQ_TRASH_DAYS", "30")))
+    return render_template("projects.html", views=saved_views("projects"), trash_days=os.getenv("BOQ_TRASH_DAYS", "30"),
+                           rows=[dict(r) for r in rows], scope=scope, stage=stage, q=q,
                            trash=trash, counts=counts, stages=STAGES, stage_label=STAGE_LABEL, jobs=jobs)
 
 
 @bp.route("/new", methods=["GET", "POST"])
 @login_required
 def new_project():
+    if not perms.can_create(g.user):
+        abort(403)
     if request.method == "GET":
         return render_template("new.html", exts=sorted(UPLOAD_EXT | {".zip"}))
     files = [f for f in request.files.getlist("files") if f and f.filename]
-    if not files:
-        flash("Choose at least one file (the BOQ).", "error")
-        return redirect(url_for("main.new_project"))
-    bad = [f.filename for f in files if Path(f.filename).suffix.lower() not in UPLOAD_EXT | {".zip"}]
-    if bad:
-        flash("Not supported: " + ", ".join(bad), "error")
-        return redirect(url_for("main.new_project"))
-    fakes = [e for e in (check_head(_peek(f), Path(f.filename).name) for f in files) if e]
-    if fakes:
-        flash("Not uploaded — " + "; ".join(fakes), "error")
+    err = check_uploads(files)
+    if err:
+        flash(err, "error")
         return redirect(url_for("main.new_project"))
     name = request.form.get("name", "").strip() or Path(files[0].filename).stem + (
         f" +{len(files) - 1}" if len(files) > 1 else "")
+    run_id = create_from_upload(files, name, use_ai=request.form.get("use_ai") == "on",
+                                shared=bool(request.form.get("shared")))
+    return redirect(url_for("main.project", run_id=run_id))
+
+
+def check_uploads(files) -> str:
+    """'' when the uploaded files may be stored, else the reason (by name, then by content)."""
+    if not files:
+        return "Choose at least one file (the BOQ)."
+    bad = [f.filename for f in files if Path(f.filename).suffix.lower() not in UPLOAD_EXT | {".zip"}]
+    if bad:
+        return "Not supported: " + ", ".join(bad)
+    fakes = [e for e in (check_head(_peek(f), Path(f.filename).name) for f in files) if e]
+    if fakes:
+        return "Not uploaded — " + "; ".join(fakes)
+    return ""
+
+
+def create_from_upload(files, name: str, use_ai: bool = True, shared: bool = True, parent: dict | None = None) -> str:
+    """Store the uploaded files, register the project and queue its analysis. With `parent`, the new project is the
+    next revision of that project and the user's work on it is carried over."""
+    import hashlib
+    db = cfg("DB")
     run_id = _new_run_id(name)
     inc = cfg("STORE").run_dir(run_id) / "_incoming"
     inc.mkdir(parents=True)
-    saved = []
+    saved, dupes = [], []
+    revision = (parent.get("revision") or 0) + 1 if parent else 0
     for i, f in enumerate(files):
         dst = inc / str(i) / safe_filename(Path(f.filename).name, 150)
         dst.parent.mkdir()
         f.save(dst)
-        saved.append({"path": str(dst), "name": Path(f.filename).name})
-    opts = {"use_ai": request.form.get("use_ai") == "on"}
-    (inc / "manifest.json").write_text(json.dumps({"files": saved, **opts}, ensure_ascii=False), encoding="utf-8")
-    cfg("DB").upsert_project(run_id, name=name[:120], owner_id=g.user["id"], shared=1 if request.form.get("shared") else 0,
-                             stage="analyzing", summary=f"{len(files)} file(s) uploaded", updated_by=g.user["id"])
+        h = hashlib.sha256()
+        with open(dst, "rb") as fh:
+            while chunk := fh.read(1 << 20):
+                h.update(chunk)
+        sha = h.hexdigest()
+        vis, vargs = perms.visible_sql(g.user)
+        prev = db.one(f"SELECT u.ts, p.name, p.run_id FROM uploads u JOIN projects p ON p.run_id=u.run_id "
+                      f"WHERE u.sha256=? AND p.deleted=0 AND {vis} ORDER BY u.ts DESC LIMIT 1", (sha, *vargs))
+        if prev:
+            dupes.append(f"{Path(f.filename).name} → “{prev['name']}” ({prev['ts'][:10]})")
+        db.x("INSERT INTO uploads (id, run_id, sha256, name, size, user_id, ts, revision) VALUES (?,?,?,?,?,?,?,?)",
+             (uuid_hex(), run_id, sha, Path(f.filename).name[:300], dst.stat().st_size, g.user["id"], now(), revision))
+        saved.append({"path": str(dst), "name": Path(f.filename).name, "sha256": sha})
+    man = {"files": saved, "use_ai": use_ai}
+    if parent:
+        man["carry_from"] = parent["run_id"]
+    (inc / "manifest.json").write_text(json.dumps(man, ensure_ascii=False), encoding="utf-8")
+    db.upsert_project(run_id, name=name[:120], owner_id=parent["owner_id"] if parent else g.user["id"],
+                      shared=(parent["shared"] if parent else (1 if shared else 0)), stage="analyzing",
+                      summary=f"{len(files)} file(s) uploaded", updated_by=g.user["id"],
+                      parent_run=parent["run_id"] if parent else None, revision=revision)
+    if parent:
+        for m in db.q("SELECT user_id, role FROM project_members WHERE run_id=?", (parent["run_id"],)):
+            db.x("INSERT OR IGNORE INTO project_members (run_id, user_id, role, added) VALUES (?,?,?,?)",
+                 (run_id, m["user_id"], m["role"], now()))
+    if dupes:
+        flash("Already uploaded before (analysed again anyway): " + "; ".join(dupes), "ok")
+    db.audit("revision uploaded" if parent else "project created", g.user["id"], run_id, request.remote_addr,
+             files=[x["name"] for x in saved][:20], parent=parent["run_id"] if parent else None)
     _submit_analysis(run_id)
-    return redirect(url_for("main.project", run_id=run_id))
+    return run_id
+
+
+def uuid_hex() -> str:
+    import uuid
+    return uuid.uuid4().hex
 
 
 def _peek(f) -> bytes:
@@ -168,27 +265,7 @@ def _new_run_id(name: str) -> str:
 
 
 def _submit_analysis(run_id: str) -> str:
-    store, db = cfg("STORE"), cfg("DB")
-    man = json.loads((store.run_dir(run_id) / "_incoming" / "manifest.json").read_text(encoding="utf-8"))
-    uid = g.user["id"]
-    settings = cfg_settings(man.get("use_ai", True))
-
-    def job(progress):
-        from boq_agent.agent import BOQAgent
-
-        agent = BOQAgent(settings, log=lambda m: None, progress=progress)
-        try:
-            with store.lock(run_id):
-                s = agent.analyze([Path(f["path"]) for f in man["files"]], [f["name"] for f in man["files"]],
-                                  run_id=run_id)
-                db.upsert_project(run_id, error="")
-                store.saved(run_id, uid, s)
-        except Exception as e:
-            db.upsert_project(run_id, stage="failed", error=str(e)[:1000])
-            raise
-        return f"{len(s.document.items)} items → {len(s.plan.work_packages)} work packages"
-
-    return cfg("JOBS").submit("analyze", "Analysis", job, run_id, uid)
+    return cfg("JOBS").submit("analyze", "Analysis", run_id, g.user["id"])
 
 
 def cfg_settings(use_ai: bool = True) -> Settings:
@@ -202,9 +279,10 @@ def cfg_settings(use_ai: bool = True) -> Settings:
 def project(run_id):
     row = _row(run_id)
     store = cfg("STORE")
-    if not store.exists(run_id):
-        return render_template("project/pending.html", p=row, job=cfg("JOBS").active_for(run_id),
-                               last=_last_job(run_id))
+    job = cfg("JOBS").active_for(run_id)
+    if not store.exists(run_id) or (job and job["kind"] == "analyze"):
+        # also while the analysis job finishes its last step (search index) after saving the result
+        return render_template("project/pending.html", p=row, job=job, last=_last_job(run_id))
     tab = "cases" if row["stage"] == "decisions" else "rfq" if row["stage"] in ("exported", "rfqs") else "packages"
     return redirect(url_for("main.tab", run_id=run_id, tab=tab))
 
@@ -258,6 +336,12 @@ def package(run_id, key):
                addable=addable, renamed=wp.key in s.wp_names,
                files=[(t, p) for t, p in (("BOQ cut-out", wp.pdf_file), ("Specifications", wp.spec_pdf),
                                           ("Drawings", wp.drawings_pdf)) if p and Path(p).exists()])
+    db = cfg("DB")
+    o = db.one("SELECT o.user_id, u.full_name FROM package_owners o JOIN users u ON u.id=o.user_id "
+               "WHERE o.run_id=? AND o.wp_key=?", (run_id, key))
+    ctx["owner"] = dict(o) if o else None
+    ctx["editors"] = [u for u in (dict(r) for r in db.q("SELECT * FROM users WHERE active=1 ORDER BY full_name"))
+                      if perms.can_edit(db, u, row)]
     return render_template("project/package.html", **ctx)
 
 
@@ -273,6 +357,19 @@ def case_items(run_id):
     return render_template("project/_items_table.html", rows=[
         {"no": items[u].item_no, "desc": items[u].full_description, "unit": items[u].unit, "qty": items[u].quantity}
         for u in p.item_uids])
+
+
+@bp.route("/p/<run_id>/print")
+@login_required
+def print_view(run_id):
+    row = _row(run_id)
+    store = cfg("STORE")
+    if not store.exists(run_id):
+        abort(404)
+    s = store.load(run_id)
+    items = s.document.item_map()
+    pk = [{"wp": wp, "items": [items[u] for u in wp.item_uids if u in items]} for wp in s.plan.work_packages]
+    return render_template("project/print.html", p=row, s=s, packages=pk, printed=now())
 
 
 @bp.route("/p/<run_id>/file/<path:rel>")
@@ -304,7 +401,8 @@ def _common(row, s) -> dict:
     return {
         "p": row, "s": s, "tabs": TABS, "pending": pending, "stage_label": STAGE_LABEL,
         "job": cfg("JOBS").active_for(row["run_id"]),
-        "can_admin": g.user["role"] == "admin" or row["owner_id"] == g.user["id"],
+        "can_admin": row["can_manage"], "can_edit": row["can_edit"],
+        "version": cfg("STORE").version(row["run_id"]),
         "has_docs": bool(docs.files),
         "outdated": bool(s.zip_file and s.status != "exported"),
         "counts": {"cases": len(pending), "packages": len(s.plan.work_packages), "items": len(s.document.items),
@@ -419,7 +517,29 @@ def _tab_activity(s, row) -> dict:
     jobs = [cfg("JOBS").view(r) for r in cfg("DB").q(
         "SELECT j.*, u.full_name who FROM jobs j LEFT JOIN users u ON u.id=j.user_id WHERE run_id=? "
         "ORDER BY created DESC LIMIT 50", (row["run_id"],))]
-    return {"jobs": jobs, "log": list(reversed(s.log[-400:]))}
+    db = cfg("DB")
+    events = []
+    for r in db.q("SELECT a.*, u.full_name who FROM audit a LEFT JOIN users u ON u.id=a.user_id WHERE a.run_id=? "
+                  "ORDER BY a.ts DESC LIMIT 100", (row["run_id"],)):
+        events.append({"ts": r["ts"], "who": r["who"] or "—", "what": ACTION_TEXT.get(r["action"], r["action"])})
+    for r in db.q("SELECT c.*, u.full_name who FROM comments c JOIN users u ON u.id=c.user_id WHERE c.run_id=? "
+                  "AND c.deleted=0 ORDER BY c.ts DESC LIMIT 50", (row["run_id"],)):
+        events.append({"ts": r["ts"], "who": r["who"], "what": "commented: " + truncate(r["body"], 120)})
+    events.sort(key=lambda e: e["ts"], reverse=True)
+    return {"jobs": jobs, "log": list(reversed(s.log[-400:])), "events": events[:120]}
+
+
+ACTION_TEXT = {
+    "api_decide": "decided special cases", "api_item": "moved an item", "api_division": "changed a section's division",
+    "api_rename_wp": "renamed a work package", "api_doc_kind": "changed a document type",
+    "api_doc_link": "changed the documents of a package", "api_export": "exported the packages",
+    "api_rfq_detect": "detected project details", "api_draft": "edited the RFQ form",
+    "api_rfq_generate": "wrote RFQ letters", "api_rfq_template": "changed the RFQ template",
+    "api_project": "changed the project settings", "api_duplicate": "duplicated the project",
+    "api_retry": "restarted the analysis", "member added": "added a member", "member removed": "removed a member",
+    "owner changed": "handed the project over", "package assigned": "assigned a package", "comment": "commented",
+    "revision uploaded": "uploaded a revised BOQ", "rfq status": "moved an RFQ", "quote recorded": "recorded a quote",
+}
 
 
 # ---------------------------------------------------------------------- RFQ
@@ -498,6 +618,8 @@ def api_item(run_id):
     with cfg("STORE").edit(run_id, g.user["id"]) as (agent, s):
         it = s.document.item_map()[b["uid"]]
         agent.set_item_category(s, it.uid, None if cat in (None, "", "NONE") else cat)
+        from .fleet import remember_correction
+        remember_correction(cfg("DB"), g.user["id"], run_id, it, None if cat in (None, "", "NONE") else cat)
         n = sum(1 for x in s.document.items if it.variant_group and x.variant_group == it.variant_group) or 1
         wp = next((w for w in s.plan.work_packages if it.uid in w.item_uids), None)
     return {"message": f"Item {it.item_no or ''} moved" + (f" with its {n - 1} variant(s)" if n > 1 else "")
@@ -509,14 +631,8 @@ def api_item(run_id):
 def api_division(run_id):
     b = body()
     uid, div = b["section_uid"], b.get("division") or None
-    store, user = cfg("STORE"), g.user["id"]
-
-    def job(progress):
-        with store.edit(run_id, user) as (agent, s):
-            agent.progress = progress
-            agent.set_section_division(s, uid, div)
-        return "Section re-classified"
-    cfg("JOBS").submit("division", "Re-classifying a section", job, run_id, user)
+    cfg("JOBS").submit("division", "Re-classifying a section", run_id, g.user["id"],
+                       {"section_uid": uid, "division": div})
     return {"message": "Re-classifying the section's items …", "job": True}
 
 
@@ -535,14 +651,8 @@ def api_doc_kind(run_id):
     b = body()
     if b.get("kind") not in ("spec", "drawing", "ignored"):
         raise ValueError("Unknown type.")
-    store, user = cfg("STORE"), g.user["id"]
-
-    def job(progress):
-        with store.edit(run_id, user) as (agent, s):
-            agent.progress = progress
-            agent.set_doc_kind(s, b["file_id"], b["kind"])
-        return "Documents re-read and matched"
-    cfg("JOBS").submit("docs", "Re-reading documents", job, run_id, user)
+    cfg("JOBS").submit("docs", "Re-reading documents", run_id, g.user["id"],
+                       {"file_id": b["file_id"], "kind": b["kind"]})
     return {"message": "Re-reading the file …", "job": True}
 
 
@@ -569,14 +679,7 @@ def api_export(run_id):
     left = sum(p.decision == "pending" for p in s.plan.proposals)
     if left:
         raise ValueError(f"Decide the {left} open special case(s) first.")
-    store, user = cfg("STORE"), g.user["id"]
-
-    def job(progress):
-        with store.edit(run_id, user) as (agent, s):
-            agent.progress = progress
-            agent.export(s)
-        return f"{len(s.plan.work_packages)} work packages exported"
-    cfg("JOBS").submit("export", "Export", job, run_id, user)
+    cfg("JOBS").submit("export", "Export", run_id, g.user["id"])
     return {"message": "Export started …", "job": True}
 
 
@@ -584,23 +687,9 @@ def api_export(run_id):
 @bp.route("/api/p/<run_id>/rfq/detect", methods=["POST"])
 @api
 def api_rfq_detect(run_id):
-    store, user = cfg("STORE"), g.user["id"]
-
-    def job(progress):
-        progress(0.2, "Reading the BOQ title area, headers and footers …")
-        with store.edit(run_id, user) as (agent, s):
-            tpl = _template_path(s)
-            pre = agent.rfq_prefill(s, tpl)
-            s.rfq_draft["prefill"] = {"project": [asdict(p) for p in pre["project"]],
-                                      "supplier_fields": pre["supplier_fields"]}
-            s.rfq_draft["prefill_template"] = str(tpl)
-            vals = s.rfq_draft.setdefault("values", {})
-            for p in pre["project"]:
-                if p.value and not vals.get(p.spec.name):
-                    vals[p.spec.name] = p.value
-            agent.save(s)
-        return "Project details detected"
-    cfg("JOBS").submit("rfq-detect", "Detecting project details", job, run_id, user)
+    s = cfg("STORE").load(run_id)
+    cfg("JOBS").submit("rfq-detect", "Detecting project details", run_id, g.user["id"],
+                       {"template": str(_template_path(s))})
     return {"message": "Reading project details from the BOQ …", "job": True}
 
 
@@ -685,12 +774,9 @@ def api_rfq_generate(run_id):
     if not pkgs:
         raise ValueError("No work package is selected for RFQs.")
 
-    def job(progress):
-        progress(0.1, "Writing the letters …")
-        with store.edit(run_id, user) as (agent, s2):
-            agent.generate_rfqs(s2, values, pkgs, sup_fields, tpl)
-        return f"{len(s2.rfq.get('files', []))} RFQ letter(s) written"
-    cfg("JOBS").submit("rfq", "Writing RFQs", job, run_id, user)
+    cfg("JOBS").submit("rfq", "Writing RFQs", run_id, user, {
+        "values": values, "packages": pkgs, "supplier_fields": sup_fields, "template": str(tpl),
+        "due_date": (s.rfq_draft.get("values") or {}).get("Date", "")})
     n = sum(max(1, len(p["suppliers"])) for p in pkgs)
     return {"message": f"Writing {n} RFQ letter(s) …", "job": True}
 
@@ -738,7 +824,7 @@ def api_project(run_id):
     row = _row(run_id)
     b = body()
     db = cfg("DB")
-    owner = g.user["role"] == "admin" or row["owner_id"] == g.user["id"]
+    owner = row["can_manage"]
     if "name" in b:
         name = " ".join(str(b["name"]).split())[:120]
         if not name:
@@ -756,9 +842,44 @@ def api_project(run_id):
     if "deleted" in b:
         if not owner:
             raise ValueError("Only the owner or an administrator can delete a project.")
-        db.x("UPDATE projects SET deleted=? WHERE run_id=?", (1 if b["deleted"] else 0, run_id))
+        db.x("UPDATE projects SET deleted=?, deleted_at=? WHERE run_id=?",
+             (1 if b["deleted"] else 0, now() if b["deleted"] else None, run_id))
         return {"message": "Moved to the trash — it can be restored from there." if b["deleted"] else "Restored."}
     raise ValueError("Nothing to change.")
+
+
+@bp.route("/api/projects/bulk", methods=["POST"])
+@login_required
+def api_bulk():
+    """Star / unstar / delete / restore several projects at once (each one checked separately)."""
+    b = body()
+    act = b.get("action")
+    ids = [str(x) for x in (b.get("ids") or [])][:500]
+    if act not in ("star", "unstar", "delete", "restore") or not ids:
+        return jsonify(ok=False, error="Nothing to do."), 400
+    db = cfg("DB")
+    done, skipped = 0, 0
+    for rid in ids:
+        r = db.one("SELECT * FROM projects WHERE run_id=?", (rid,))
+        if r is None or not perms.can_view(db, g.user, dict(r)):
+            skipped += 1
+            continue
+        r = dict(r)
+        if act in ("star", "unstar"):
+            if not perms.can_edit(db, g.user, r):
+                skipped += 1
+                continue
+            db.x("UPDATE projects SET starred=? WHERE run_id=?", (1 if act == "star" else 0, rid))
+        else:
+            if not perms.can_manage(g.user, r):
+                skipped += 1
+                continue
+            db.x("UPDATE projects SET deleted=?, deleted_at=? WHERE run_id=?",
+                 (1 if act == "delete" else 0, now() if act == "delete" else None, rid))
+            db.audit("api_project", g.user["id"], rid, request.remote_addr, bulk=act)
+        done += 1
+    msg = f"{done} project(s) updated." + (f" {skipped} skipped (not allowed)." if skipped else "")
+    return jsonify(ok=True, message=msg, done=done, skipped=skipped)
 
 
 @bp.route("/api/p/<run_id>/duplicate", methods=["POST"])
@@ -774,25 +895,7 @@ def api_duplicate(run_id):
     db.upsert_project(new_id, name=name, owner_id=user, shared=row["shared"], stage="analyzing",
                       summary="Copying …", updated_by=user)
 
-    def job(progress):
-        src, dst = store.run_dir(run_id), store.run_dir(new_id)
-        progress(0.1, "Copying the project files …")
-        with store.lock(run_id):
-            shutil.copytree(src, dst, dirs_exist_ok=True, ignore=shutil.ignore_patterns(
-                "work_packages", "rfq", "*.zip", "session.tmp"))
-        text = (dst / "session.json").read_text(encoding="utf-8")
-        for a, b in ((str(src), str(dst)), (str(src).replace("\\", "/"), str(dst).replace("\\", "/"))):
-            text = text.replace(json.dumps(a)[1:-1], json.dumps(b)[1:-1])
-        from boq_agent.models import Session
-        s = Session.model_validate_json(text)
-        s.run_id = new_id
-        s.status, s.output_dir, s.zip_file, s.rfq = "planned", None, None, {}
-        for wp in s.plan.work_packages:
-            wp.pdf_file = wp.spec_pdf = wp.drawings_pdf = None
-        store.agent().save(s)
-        store.saved(new_id, user, s)
-        return "Copy ready"
-    cfg("JOBS").submit("duplicate", "Duplicating", job, new_id, user)
+    cfg("JOBS").submit("duplicate", "Duplicating", new_id, user, {"src": run_id})
     return {"message": "Making a copy …", "url": url_for("main.project", run_id=new_id)}
 
 
@@ -868,13 +971,13 @@ def ago(ts: str) -> str:
         return ts
     s = int(d.total_seconds())
     if s < 60:
-        return "just now"
+        return t("just now")
     if s < 3600:
-        return f"{s // 60} min ago"
+        return t("{n} min ago", n=s // 60)
     if s < 86400:
-        return f"{s // 3600} h ago"
+        return t("{n} h ago", n=s // 3600)
     if s < 86400 * 7:
-        return f"{s // 86400} d ago"
+        return t("{n} d ago", n=s // 86400)
     return ts[:10]
 
 

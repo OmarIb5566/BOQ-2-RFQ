@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Upload a revised BOQ") }} · {{ p.name }}{% endblock %}
+{% block pageclass %}narrow{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="{{ url_for('main.projects') }}">{{ _("Projects") }}</a> › <a href="{{ url_for('main.project', run_id=p.run_id) }}">{{ p.name }}</a> › {{ _("Revision") }}</div>
+<h1>{{ _("Upload a revised BOQ") }}</h1>
+<p class="muted">{{ _("Upload the complete revised set (BOQs, and the specs / drawings if they changed). A new revision is created next to this one; nothing here is changed.") }}</p>
+<div class="banner info">{{ _("Carried over automatically: special-case decisions, items and sections you corrected (same text), package names, the specs and sheets you attached or removed, and the RFQ form.") }}</div>
+<form id="upload-form" method="post" enctype="multipart/form-data" class="stack">
+  <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+  <div class="drop" id="drop">
+    <div class="big">⇪</div>
+    <h3>{{ _("Drop files here, or click to choose") }}</h3>
+    <div class="muted small">{{ _("Excel / PDF BOQs · PDF specifications · PDF or scanned drawings · a .zip with everything") }}</div>
+    <input type="file" id="files" name="files" multiple hidden accept="{{ exts|join(',') }}">
+  </div>
+  <div class="file-list" id="file-list"></div>
+  <label class="check"><input type="checkbox" name="use_ai" checked> {{ _("Use the AI engine") }}</label>
+  <div class="row between"><a href="{{ url_for('revisions_views.revisions', run_id=p.run_id) }}">← {{ _("Revisions & history") }}</a>
+    <button class="btn primary lg" id="go" disabled>{{ _("Upload & analyse") }}</button></div>
+</form>
+{% endblock %}

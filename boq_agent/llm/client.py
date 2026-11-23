@@ -48,6 +48,7 @@ class OllamaClient:
         self.calls = 0
         self.seconds = 0.0
         self.log: list[dict] = []      # one entry per call: op, model, tokens in/out, seconds, images
+        self.keep_alive: str | int = "30m"   # how long Ollama keeps the model loaded after a call
 
     def status(self) -> tuple[bool, str]:
         hit = _STATUS.get((self.url, self.model))
@@ -79,7 +80,7 @@ class OllamaClient:
             "stream": False,
             "think": think,
             "format": schema,
-            "keep_alive": "30m",
+            "keep_alive": self.keep_alive,
             "options": {"temperature": self.temperature, "num_ctx": self.num_ctx,
                         **({"num_predict": max_tokens} if max_tokens else {})},
             "messages": ([{"role": "system", "content": system}] if system else []) + [msg],

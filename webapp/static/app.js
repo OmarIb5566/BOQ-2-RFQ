@@ -8,6 +8,17 @@
   const RUN = document.body.dataset.run || "";
   // the top bar (with the engine status) exists only for a signed-in user: no polling on sign-in / set-up pages
   const SIGNED_IN = !!document.getElementById("engine");
+  // interface texts translated on the server (keys "js:<English>" in webapp/translations/<lang>.json)
+  let I18N = {};
+  try { I18N = JSON.parse(document.getElementById("i18n")?.textContent || "{}"); } catch { I18N = {}; }
+  const T = (s, vars) => {
+    let out = I18N[s] || s;
+    if (vars) for (const [k, v] of Object.entries(vars)) out = out.replaceAll(`{${k}}`, v);
+    return out;
+  };
+  window.T = T;
+  // the project version this page shows (optimistic locking: the server refuses a change made on an old copy)
+  const version = () => document.getElementById("projhead")?.dataset.version || "";
 
   // ------------------------------------------------------------------ toasts
   function toast(msg, kind = "", ms = 4200) {
@@ -29,24 +40,42 @@
     if (btn) { btn.disabled = true; btn.dataset.label = btn.innerHTML; btn.innerHTML = `<span class="spin"></span> ${btn.textContent.trim()}`; }
     try {
       const r = await fetch(url, {
-        method: "POST", headers: isForm ? { "X-CSRF": CSRF } : { "Content-Type": "application/json", "X-CSRF": CSRF },
+        method: "POST",
+        headers: { "X-CSRF": CSRF, ...(isForm ? {} : { "Content-Type": "application/json" }), ...(version() ? { "X-Version": version() } : {}) },
         body: isForm ? data : JSON.stringify(data || {}),
       });
       if (r.status === 401) return signedOut();
       let j = {};
       try { j = await r.json(); } catch { j = { ok: false, error: `Server error (${r.status}).` }; }
-      if (!j.ok) { toast(j.error || "Something went wrong.", "bad", 7000); return j; }
+      if (j.conflict) { showConflict(j.error); return j; }
+      if (!j.ok) { toast(j.error || T("Something went wrong."), "bad", 7000); return j; }
+      if (j.version !== undefined && document.getElementById("projhead")) document.getElementById("projhead").dataset.version = j.version;
       if (j.message && !j.silent) toast(j.message, j.job ? "" : "ok");
       if (j.job) watchJobs(true);
       return j;
     } catch (e) {
-      toast("Cannot reach the server — is it still running?", "bad", 7000);
+      toast(T("Cannot reach the server — is it still running?"), "bad", 7000);
       return { ok: false };
     } finally {
       if (btn && btn.isConnected) { btn.disabled = false; btn.innerHTML = btn.dataset.label; }
     }
   }
   window.post = post;
+
+  // someone else saved the project since this page was loaded: never overwrite their work silently
+  function showConflict(msg) {
+    let b = document.getElementById("conflict");
+    if (!b) {
+      b = document.createElement("div");
+      b.id = "conflict"; b.className = "banner warn conflict";
+      b.innerHTML = '<span class="grow"></span><button type="button" class="btn sm primary"></button>';
+      b.lastChild.textContent = T("Reload");
+      b.lastChild.onclick = () => location.reload();
+      document.body.prepend(b);
+    }
+    b.firstChild.textContent = msg;
+  }
+  window.showConflict = showConflict;
 
   // the session ended (idle time-out, password changed elsewhere): go to the sign-in page, then come back here
   function signedOut() {
@@ -258,7 +287,7 @@
       if (!el || !j.ok) return;
       const d = $(".dot", el), l = $(".lbl", el);
       d.className = "dot " + (j.llm ? "ok" : "warn");
-      l.textContent = j.llm ? "AI ready" : "AI offline — keyword mode";
+      l.textContent = j.llm ? T("AI ready") : T("AI offline — keyword mode");
       el.title = `${j.llm_msg}\nVision: ${j.vision_msg}`;
     } catch { /* ignore */ }
   }
@@ -450,7 +479,159 @@
     try { localStorage.setItem("theme", nx); } catch { /* private mode */ }
   });
 
+  // ------------------------------------------------------------------ who else is here (presence)
+  async function presence() {
+    if (!RUN || !document.getElementById("projhead")) return;
+    try {
+      const page = location.pathname.split("/").filter(Boolean).slice(2).join("/") || "overview";
+      const r = await fetch(`/api/p/${RUN}/presence`, { method: "POST", headers: { "X-CSRF": CSRF, "X-Background": "1", "Content-Type": "application/json" }, body: JSON.stringify({ page }) });
+      if (r.status === 401) return signedOut();
+      const j = await r.json();
+      const el = $("#presence");
+      if (!el || !j.ok) return;
+      el.classList.toggle("hidden", !j.others.length);
+      el.textContent = j.others.length ? "👥 " + (j.others.length === 1 ? T("{name} is here too", { name: j.others[0].name }) : T("{n} others are here", { n: j.others.length })) : "";
+      el.title = j.others.map(o => `${o.name} — ${o.page}`).join("\n");
+      const ph = document.getElementById("projhead");
+      if (ph && j.version !== undefined && String(j.version) !== ph.dataset.version && !document.getElementById("conflict")) {
+        if (!document.getElementById("stale")) {
+          const n = document.createElement("div"); n.id = "stale"; n.className = "banner info";
+          n.innerHTML = '<span class="grow"></span><button type="button" class="btn sm"></button>';
+          n.firstChild.textContent = T("This project was changed by someone else.");
+          n.lastChild.textContent = T("Show the changes");
+          n.lastChild.onclick = () => { n.hidden = true; n.id = ""; refresh(); };
+          ph.after(n);
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  // ------------------------------------------------------------------ notification bell
+  async function bell() {
+    try {
+      const r = await fetch("/api/notifications", BG);
+      if (r.status === 401) return signedOut();
+      const j = await r.json();
+      if (!j.ok) return;
+      const n = $("#bell-n"), list = $("#bell-list");
+      if (n) { n.textContent = j.unread; n.classList.toggle("hidden", !j.unread); }
+      if (!list) return;
+      list.textContent = "";
+      if (!j.items.length) {
+        const e = document.createElement("div"); e.className = "muted small"; e.style.padding = ".5rem .7rem";
+        e.textContent = T("Nothing new."); list.appendChild(e); return;
+      }
+      for (const it of j.items) {
+        const a = document.createElement("a");
+        a.href = it.url || "#"; a.className = "note" + (it.read ? "" : " unread");
+        a.innerHTML = '<span class="grow"></span><span class="faint small"></span>';
+        a.firstChild.textContent = it.text; a.lastChild.textContent = it.ts.replace("T", " ").slice(0, 16);
+        a.addEventListener("click", () => post("/api/notifications/read", { id: it.id }));
+        list.appendChild(a);
+      }
+    } catch { /* ignore */ }
+  }
+  $("#bell-all")?.addEventListener("click", async () => { await post("/api/notifications/read", {}); bell(); });
+
+  // ------------------------------------------------------------------ comments  <div data-comments="wp:KEY">
+  async function loadComments(box) {
+    const r = await fetch(`/api/p/${RUN}/comments?target=${encodeURIComponent(box.dataset.comments)}`);
+    if (!r.ok) return;
+    const j = await r.json();
+    const list = $(".c-list", box);
+    list.textContent = "";
+    if (!j.comments.length) {
+      const e = document.createElement("p"); e.className = "muted small";
+      e.textContent = T("No comments yet. Type @username to notify someone."); list.appendChild(e);
+    }
+    for (const c of j.comments) {
+      const d = document.createElement("div");
+      d.className = "comment";
+      d.innerHTML = '<div class="c-head"><b></b><span class="faint small"></span></div><div class="c-body" dir="auto"></div>';
+      d.querySelector("b").textContent = c.who;
+      d.querySelector(".faint").textContent = " · " + c.ts.replace("T", " ").slice(0, 16);
+      d.querySelector(".c-body").textContent = c.body;
+      if (c.mine) {
+        const x = document.createElement("button"); x.type = "button"; x.className = "btn ghost sm"; x.textContent = T("Delete");
+        x.onclick = async () => { if (confirm(T("Delete this comment?"))) { await post(`/api/p/${RUN}/comments`, { delete: c.id }); loadComments(box); } };
+        d.querySelector(".c-head").appendChild(x);
+      }
+      list.appendChild(d);
+    }
+  }
+  function initComments(root) {
+    $$("[data-comments]", root).forEach(box => {
+      if (box.dataset.bound) return;
+      box.dataset.bound = "1";
+      loadComments(box);
+      $("form", box)?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const ta = $("textarea", box);
+        if (!ta.value.trim()) return;
+        const j = await post(`/api/p/${RUN}/comments`, { target: box.dataset.comments, body: ta.value }, $("button", e.target));
+        if (j.ok) { ta.value = ""; loadComments(box); }
+      });
+    });
+  }
+
+  // ------------------------------------------------------------------ saved filter views  <button data-save-view="projects">
+  document.addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-save-view]");
+    if (b) {
+      const name = prompt(T("Name of this view (the current filters are saved):"));
+      if (!name) return;
+      const j = await post("/api/views", { page: b.dataset.saveView, name, query: location.search });
+      if (j.ok) location.reload();
+    }
+    const d = e.target.closest("[data-delete-view]");
+    if (d) { e.preventDefault(); const j = await post("/api/views", { delete: d.dataset.deleteView }); if (j.ok) location.reload(); }
+  });
+
+  // ------------------------------------------------------------------ bulk actions (projects list)
+  document.addEventListener("change", (e) => {
+    if (!e.target.matches(".bulk-pick")) return;
+    const n = $$(".bulk-pick:checked").length;
+    $("#bulk-bar")?.classList.toggle("hidden", !n);
+    const c = $("#bulk-n"); if (c) c.textContent = n;
+  });
+  document.addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-bulk]");
+    if (!b) return;
+    if (b.dataset.confirm && !confirm(b.dataset.confirm)) return;
+    const ids = $$(".bulk-pick:checked").map(c => c.value);
+    const j = await post("/api/projects/bulk", { action: b.dataset.bulk, ids }, b);
+    if (j.ok) setTimeout(() => location.reload(), 500);
+  });
+
+  // ------------------------------------------------------------------ print, first-run tour
+  document.addEventListener("click", async (e) => {
+    if (e.target.closest("[data-print]")) window.print();
+    if (e.target.closest("[data-tour-done]")) {
+      const j = await post("/api/tour/done", {});
+      if (j.ok) { const tr = $("#tour"); if (tr) tr.hidden = true; }
+    }
+  });
+
+  // ------------------------------------------------------------------ RFQ register: status moves and details
+  document.addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-rfq-move]");
+    if (!b) return;
+    const box = $("#rfq-moves");
+    const note = prompt(T("Note for the history (optional):"), "");
+    if (note === null) return;
+    const j = await post(`/api/rfq/${box.dataset.rfq}`, { to: b.dataset.rfqMove, note, version: box.dataset.version }, b);
+    if (j.ok) setTimeout(() => location.reload(), 400);
+  });
+  document.addEventListener("change", async (e) => {
+    const f = e.target.closest("[data-rfq-field]");
+    if (!f) return;
+    const box = $("#rfq-moves");
+    const j = await post(`/api/rfq/${box.dataset.rfq}`, { [f.dataset.rfqField]: f.value, version: box.dataset.version });
+    if (j.ok) box.dataset.version = String(Number(box.dataset.version) + 1);
+  });
+
   function init(root) {
+    initComments(root);
     initLazy(root);
     initRfq(root);
     $$("[data-filter]", root).forEach(i => {
@@ -466,6 +647,10 @@
   if (SIGNED_IN) {
     status();
     setInterval(status, 60000);
+    bell();
+    setInterval(bell, 60000);
+    presence();
+    setInterval(presence, 20000);
     pollJobs();
     if (document.body.dataset.alwaysPoll) watchJobs();
   }

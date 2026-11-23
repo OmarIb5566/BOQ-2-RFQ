@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Revisions & history") }} · {{ p.name }}{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="{{ url_for('main.projects') }}">{{ _("Projects") }}</a> › <a href="{{ url_for('main.project', run_id=p.run_id) }}">{{ p.name }}</a> › {{ _("Revisions & history") }}</div>
+<div class="row between">
+  <h1>{{ _("Revisions & history") }}</h1>
+  {% if p.can_edit %}<a class="btn primary" href="{{ url_for('revisions_views.upload_revision', run_id=p.run_id) }}">⇪ {{ _("Upload a revised BOQ") }}</a>{% endif %}
+</div>
+<p class="muted">{{ _("Each revision is kept. Your decisions, corrections, package names, document choices and RFQ form carry over to the next revision; unchanged inputs are not re-read.") }}</p>
+
+{% for r in revs %}
+<div class="card" style="margin-bottom:.8rem">
+  <div class="card-head">
+    <span class="tag {{ 'violet' if r.revision else '' }}">{{ _("Revision") }} {{ r.revision }}</span>
+    <a href="{{ url_for('main.project', run_id=r.run_id) }}"><b>{{ r.name }}</b></a>
+    <span class="tag stage-{{ r.stage }}">{{ r.stage }}</span>
+    {% if r.run_id == p.run_id %}<span class="tag brand">{{ _("this one") }}</span>{% endif %}
+    <span class="grow"></span>
+    <span class="muted small">{{ t_summary(r.summary) }} · {{ r.created|ago }}</span>
+    {% if r.parent_run %}<a class="btn sm" href="{{ url_for('revisions_views.compare_view', run_id=r.run_id, **{'with': r.parent_run}) }}">{{ _("Compare with previous") }}</a>{% endif %}
+  </div>
+  <div class="card-body">
+    <table class="t">
+      <thead><tr><th>{{ _("Input file") }}</th><th class="right">{{ _("Size") }}</th><th>{{ _("Fingerprint") }}</th><th>{{ _("By") }}</th><th>{{ _("When") }}</th></tr></thead>
+      <tbody>{% for f in inputs[r.run_id] %}
+        <tr><td>{{ f.name }}</td><td class="right small">{{ f.size|size }}</td><td class="small"><code title="SHA-256 {{ f.sha256 }}">{{ f.sha256[:12] }}</code></td><td class="small">{{ f.who or '' }}</td><td class="small">{{ f.ts|ago }}</td></tr>
+      {% else %}<tr><td colspan="5" class="muted small">{{ _("Inputs not recorded (project made before version 2.0).") }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+</div>
+{% endfor %}
+
+{% if p.can_manage %}
+<form method="post" class="card pad row" style="margin-top:1rem">
+  <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+  <b>{{ _("Project settings") }}</b>
+  <label class="check"><input type="checkbox" name="use_ai" {{ 'checked' if settings.get('use_ai', True) }}> {{ _("Use the AI engine for new revisions") }}</label>
+  <button class="btn sm">{{ _("Save") }}</button>
+  <span class="hint">{{ _("The RFQ template of this project is set on the RFQs tab.") }}</span>
+</form>
+{% endif %}
+{% endblock %}

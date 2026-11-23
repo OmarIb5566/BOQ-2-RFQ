@@ -1,0 +1,23 @@
+{% extends "admin/layout.html" %}
+{% block admin %}
+<div class="row" style="margin-bottom:1rem">
+  <span class="tag">{{ _("Queued") }}: {{ q.q or 0 }}</span>
+  <span class="tag brand">{{ _("Running") }}: {{ q.r or 0 }}</span>
+  <span class="tag {{ 'bad' if q.f }}">{{ _("Failed in the last day") }}: {{ q.f or 0 }}</span>
+</div>
+<div class="card table-wrap">
+<table class="t">
+  <thead><tr><th style="width:2rem"></th><th>{{ _("Check") }}</th><th>{{ _("Details") }}</th></tr></thead>
+  <tbody>
+  {% for c in checks %}
+  <tr>
+    <td><span class="dot {{ 'ok' if c.ok == True else ('bad' if c.ok == False else '') }}"></span></td>
+    <td><b>{{ _(c.name) }}</b></td>
+    <td class="small" style="overflow-wrap:anywhere">{{ c.detail }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="muted small">{{ _("Green: working. Red: needs attention. Grey: optional and not used on this server.") }}</p>
+{% endblock %}

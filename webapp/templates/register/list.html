@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}{{ _("RFQ register") }} · BOQ → RFQ{% endblock %}
+{% block content %}
+<div class="row between" style="margin-bottom:.6rem">
+  <div>
+    <h1>{{ _("RFQ register") }}{% if projects.current %} · {{ projects.current }}{% endif %}</h1>
+    <p class="muted">{{ _("Every RFQ letter, numbered, with its supplier, status and due date. RFQs enter the register when the letters are written.") }}</p>
+  </div>
+  <div class="row">
+    <a class="btn" href="?{{ args|urlencode }}&format=xlsx">⬇ {{ _("Excel") }}</a>
+    <a class="btn" href="?{{ args|urlencode }}&format=pdf">⬇ {{ _("PDF") }}</a>
+  </div>
+</div>
+
+<form class="row" method="get" style="margin-bottom:.6rem">
+  {% if args.get('run') %}<input type="hidden" name="run" value="{{ args.run }}">{% endif %}
+  <div class="search" style="width:280px"><input type="search" name="q" value="{{ args.get('q', '') }}" placeholder="{{ _('RFQ no., package, supplier, project …') }}"></div>
+  <select name="status" class="sm inline" style="width:auto" data-autosubmit><option value="">{{ _("All statuses") }}</option>{% for st in statuses %}<option value="{{ st }}" {{ 'selected' if args.get('status') == st }}>{{ _(label[st]) }}{% if counts[st] %} · {{ counts[st] }}{% endif %}</option>{% endfor %}</select>
+  <label class="check small"><input type="checkbox" name="open" value="1" {{ 'checked' if args.get('open') }} data-autosubmit> {{ _("Open only") }}</label>
+  <label class="check small"><input type="checkbox" name="mine" value="1" {{ 'checked' if args.get('mine') }} data-autosubmit> {{ _("Mine") }}</label>
+  <label class="check small"><input type="checkbox" name="overdue" value="1" {{ 'checked' if args.get('overdue') }} data-autosubmit> <span class="{{ 'overdue' if n_overdue }}">{{ _("Overdue") }} ({{ n_overdue }})</span></label>
+  <button class="btn sm">{{ _("Filter") }}</button>
+</form>
+<div class="saved-views">
+  {% for v in views %}<a class="view" href="{{ url_for('register_views.register') }}?{{ v.query }}">{{ v.name }}<span class="x" data-delete-view="{{ v.id }}" title="{{ _('Remove this view') }}">×</span></a>{% endfor %}
+  {% if args %}<button type="button" class="btn ghost sm" data-save-view="register">☆ {{ _("Save this view") }}</button>{% endif %}
+</div>
+
+<div class="card table-wrap scroll-y">
+<table class="t">
+  <thead><tr><th>{{ _("RFQ no.") }}</th><th>{{ _("Project") }}</th><th>{{ _("Work package") }}</th><th>{{ _("Supplier") }}</th><th>{{ _("Status") }}</th><th>{{ _("Due") }}</th><th class="right">{{ _("Quoted") }}</th><th>{{ _("Assigned") }}</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr data-href="{{ url_for('register_views.rfq_page', rfq_id=r.id) }}">
+    <td class="nowrap"><a href="{{ url_for('register_views.rfq_page', rfq_id=r.id) }}"><b>{{ r.number }}</b></a></td>
+    <td class="small">{{ r.project or '—' }}</td>
+    <td class="small" dir="auto">{{ r.wp_id }} {{ r.package[:60] }}</td>
+    <td class="small" dir="auto">{{ r.supplier or '—' }}</td>
+    <td><span class="tag status-{{ r.status }}">{{ _(label[r.status]) }}</span></td>
+    <td class="small nowrap {{ 'overdue' if r.overdue }}">{{ r.due_date or '' }}{% if r.overdue %} ⚠{% endif %}</td>
+    <td class="right small">{{ '{:,.2f}'.format(r.quote_amount) if r.quote_amount is not none else '' }}</td>
+    <td class="small">{{ r.assigned or '' }}</td>
+  </tr>
+  {% else %}<tr><td colspan="8" class="muted">{{ _("No RFQs yet — they appear here when RFQ letters are written (project › RFQs tab).") }}</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="muted small" style="margin-top:.5rem">{{ rows|length }} {{ _('RFQ(s)') }}</p>
+
+{% if me.role != 'viewer' %}
+<details class="card pad" style="margin-top:1rem">
+  <summary><b>{{ _("Import an existing register (Excel)") }}</b></summary>
+  <form method="post" action="{{ url_for('register_views.import_register') }}" enctype="multipart/form-data" class="row" style="margin-top:.6rem">
+    <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+    <input type="file" name="file" accept=".xlsx" required>
+    <button class="btn">{{ _("Import") }}</button>
+    <span class="hint">{{ _("Columns recognised by their titles: RFQ no., Project, Work package, Supplier, Status, Due date, Amount, Notes (English or Arabic).") }}</span>
+  </form>
+</details>
+{% endif %}
+{% endblock %}

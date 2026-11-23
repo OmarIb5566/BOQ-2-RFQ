@@ -2,21 +2,21 @@
 {% block tab %}
 {% set exported = s.status == 'exported' %}
 {% if not exported %}
-  <div class="banner warn">{{ 'Export again first' if outdated else 'Export the work packages first' }} — each RFQ is sent with its BOQ cut-out{{ ', specs and drawings' if has_docs }}.
-    <a class="btn sm" href="{{ url_for('main.tab', run_id=p.run_id, tab='export') }}">Go to Export</a>
-    <span class="muted small">You can already fill in the details below; they are kept.</span></div>
+  <div class="banner warn">{{ 'Export again first' if outdated else 'Export the work packages first' }} {{ _('— each RFQ is sent with its BOQ cut-out') }}{{ ', specs and drawings' if has_docs }}.
+    <a class="btn sm" href="{{ url_for('main.tab', run_id=p.run_id, tab='export') }}">{{ _("Go to Export") }}</a>
+    <span class="muted small">{{ _("You can already fill in the details below; they are kept.") }}</span></div>
 {% endif %}
 
 {% if rfq_zip %}
 <div class="card pad row between" style="margin-bottom:1rem">
-  <div><h3 style="margin:0">✓ {{ s.rfq.files|length }} RFQ letter(s) drafted</h3><span class="muted small">{{ generated|ago }} · each folder holds the letters and the package's attachments</span></div>
+  <div><h3 style="margin:0">✓ {{ s.rfq.files|length }} {{ _('RFQ letter(s) drafted') }}</h3><span class="muted small">{{ generated|ago }} · {{ _("each folder holds the letters and the package's attachments") }}</span></div>
   <div class="row">
-    <details class="menu"><summary class="btn">Folders ▾</summary>
+    <details class="menu"><summary class="btn">{{ _("Folders ▾") }}</summary>
       <div class="pop" style="min-width:380px; max-height:60vh; overflow:auto">
         {% for folder, fs in rfq_folders.items() %}<div style="padding:.3rem .7rem"><b class="small">{{ folder }}</b>
           {% for f in fs %}<a class="small" href="{{ rel(f) }}?dl=1">⬇ {{ f.name }}</a>{% endfor %}</div>{% endfor %}
       </div></details>
-    <a class="btn primary" href="{{ rel(rfq_zip) }}?dl=1">⬇ Download all RFQs (ZIP)</a>
+    <a class="btn primary" href="{{ rel(rfq_zip) }}?dl=1">{{ _("⬇ Download all RFQs (ZIP)") }}</a>
   </div>
 </div>
 {% endif %}
@@ -24,16 +24,16 @@
 <form id="rfq-form" data-nosubmit>
 <div class="grid" style="grid-template-columns: 1fr 1fr; align-items:start">
   <div class="card">
-    <div class="card-head"><h3 style="margin:0">Project details</h3><span class="grow"></span>
-      <span class="muted small" id="save-state">Changes are saved automatically</span></div>
+    <div class="card-head"><h3 style="margin:0">{{ _("Project details") }}</h3><span class="grow"></span>
+      <span class="muted small" id="save-state">{{ _("Changes are saved automatically") }}</span></div>
     <div class="card-body">
       {% if not prefill_ready %}
-        <div class="banner info"><span>Let the agent read the project name, location and owner from the BOQ headers.</span>
-          <button type="button" class="btn sm primary" data-post="/api/p/{{ p.run_id }}/rfq/detect">Detect</button></div>
+        <div class="banner info"><span>{{ _("Let the agent read the project name, location and owner from the BOQ headers.") }}</span>
+          <button type="button" class="btn sm primary" data-post="/api/p/{{ p.run_id }}/rfq/detect">{{ _("Detect") }}</button></div>
       {% endif %}
       {% for f in fields %}{% set sp = f.spec %}
         {% if f.same_as %}
-          <label class="check" style="margin-bottom:.5rem"><input type="checkbox" data-diff="{{ sp.name }}" {{ 'checked' if f.different }}> Use a different date for “{{ sp.label }}”</label>
+          <label class="check" style="margin-bottom:.5rem"><input type="checkbox" data-diff="{{ sp.name }}" {{ 'checked' if f.different }}> {{ _('Use a different date for') }} “{{ sp.label }}”</label>
           <div id="diff-{{ sp.name }}" class="{{ '' if f.different else 'hidden' }}">
             <label class="field"><span>{{ sp.label }}</span><input type="date" data-field="{{ sp.name }}" value="{{ f.value }}"></label></div>
         {% else %}
@@ -41,11 +41,11 @@
             <input type="{{ 'date' if sp.type == 'date' else 'text' }}" data-field="{{ sp.name }}" value="{{ f.value }}" {{ 'dir=auto' }}>
             {% if f.auto and f.detected %}
               <span class="confirm-box row small" style="margin-top:.3rem; gap:.5rem">
-                <span class="muted">Found in the BOQ{% if f.source %} ({{ f.source }}){% endif %}.</span>
-                <label class="check"><input type="checkbox" data-confirm-field="{{ sp.name }}" data-detected="{{ f.detected }}" data-label="{{ sp.label }}" {{ 'checked' if f.confirmed }}> Confirm</label>
+                <span class="muted">{{ _('Found in the BOQ') }}{% if f.source %} ({{ f.source }}){% endif %}.</span>
+                <label class="check"><input type="checkbox" data-confirm-field="{{ sp.name }}" data-detected="{{ f.detected }}" data-label="{{ sp.label }}" {{ 'checked' if f.confirmed }}> {{ _("Confirm") }}</label>
               </span>
             {% elif f.suggestions %}
-              <span class="chips small" style="margin-top:.3rem"><span class="muted">Possibly:</span>
+              <span class="chips small" style="margin-top:.3rem"><span class="muted">{{ _("Possibly:") }}</span>
                 {% for sg in f.suggestions[:4] %}<button type="button" class="btn sm" data-suggest="{{ sg }}" data-for="{{ sp.name }}">{{ sg[:60] }}</button>{% endfor %}</span>
             {% endif %}
             {% if sp.help %}<div class="hint">{{ sp.help }}</div>{% endif %}
@@ -56,32 +56,32 @@
   </div>
 
   <div class="card">
-    <div class="card-head"><h3 style="margin:0">Letter preview</h3><span class="grow"></span>
+    <div class="card-head"><h3 style="margin:0">{{ _("Letter preview") }}</h3><span class="grow"></span>
       <select id="preview-wp" class="sm inline" style="max-width:280px">{% for x in packages %}<option value="{{ x.wp.key }}">{{ x.wp.wp_id }} · {{ x.name[:50] }}</option>{% endfor %}</select>
-      <button type="button" class="btn sm ghost" data-preview-refresh title="Refresh preview">↻</button></div>
-    <div class="card-body"><div class="letter" id="letter"><span class="muted">Loading …</span></div>
-      <div class="hint">Template: {{ template.name }}{{ ' (uploaded for this project)' if custom_template }} ·
-        <a href="#tpl" data-open="tpl">change</a></div></div>
+      <button type="button" class="btn sm ghost" data-preview-refresh title="{{ _('Refresh preview') }}">↻</button></div>
+    <div class="card-body"><div class="letter" id="letter"><span class="muted">{{ _("Loading …") }}</span></div>
+      <div class="hint">{{ _('Template:') }} {{ template.name }}{{ ' (uploaded for this project)' if custom_template }} ·
+        <a href="#tpl" data-open="tpl">{{ _("change") }}</a></div></div>
   </div>
 </div>
 
 <div class="card" style="margin-top:1rem">
-  <div class="card-head"><h3 style="margin:0">Suppliers</h3><span class="grow"></span>
-    <input type="text" id="bulk-sup" class="sm inline" placeholder="Supplier name" style="width:200px">
-    <button type="button" class="btn sm" id="bulk-sup-add">Add to all selected</button>
-    <button type="button" class="btn sm ghost" data-all-include="1">Select all</button>
-    <button type="button" class="btn sm ghost" data-all-include="0">Select none</button></div>
-  <div class="card-body muted small" style="padding-bottom:0">One letter per supplier. Type a name and press Enter; a package without a supplier still gets one letter with the name left blank.</div>
+  <div class="card-head"><h3 style="margin:0">{{ _("Suppliers") }}</h3><span class="grow"></span>
+    <input type="text" id="bulk-sup" class="sm inline" placeholder="{{ _('Supplier name') }}" style="width:200px">
+    <button type="button" class="btn sm" id="bulk-sup-add">{{ _("Add to all selected") }}</button>
+    <button type="button" class="btn sm ghost" data-all-include="1">{{ _("Select all") }}</button>
+    <button type="button" class="btn sm ghost" data-all-include="0">{{ _("Select none") }}</button></div>
+  <div class="card-body muted small" style="padding-bottom:0">{{ _("One letter per supplier. Type a name and press Enter; a package without a supplier still gets one letter with the name left blank.") }}</div>
   <div class="table-wrap">
   <table class="t">
-    <thead><tr><th style="width:36px"></th><th>Work package</th><th>Attachments</th><th style="width:45%">Suppliers</th></tr></thead>
+    <thead><tr><th style="width:36px"></th><th>{{ _("Work package") }}</th><th>{{ _("Attachments") }}</th><th style="width:45%">{{ _("Suppliers") }}</th></tr></thead>
     <tbody>
     {% for x in packages %}
       <tr data-wp="{{ x.wp.key }}">
-        <td><input type="checkbox" data-include {{ 'checked' if x.include }} title="Write RFQs for this package"></td>
+        <td><input type="checkbox" data-include {{ 'checked' if x.include }} title="{{ _('Write RFQs for this package') }}"></td>
         <td><b>{{ x.wp.wp_id }}</b> {{ x.name }}</td>
         <td class="small muted">{{ x.attach|join(' · ') }}</td>
-        <td><div class="tagbox">{% for sname in x.suppliers %}<span class="chip" data-v="{{ sname }}"><span>{{ sname }}</span><button type="button" title="Remove">×</button></span>{% endfor %}<input type="text" class="chip-input" placeholder="Add supplier …"></div></td>
+        <td><div class="tagbox">{% for sname in x.suppliers %}<span class="chip" data-v="{{ sname }}"><span>{{ sname }}</span><button type="button" title="{{ _('Remove') }}">×</button></span>{% endfor %}<input type="text" class="chip-input" placeholder="{{ _('Add supplier …') }}"></div></td>
       </tr>
     {% endfor %}
     </tbody>
@@ -91,19 +91,19 @@
 </form>
 
 <div class="row between" style="margin-top:1rem">
-  <div id="need-confirm" class="banner warn hidden" style="margin:0">Confirm the values found in the BOQ: <b></b></div>
+  <div id="need-confirm" class="banner warn hidden" style="margin:0">{{ _("Confirm the values found in the BOQ:") }} <b></b></div>
   <span class="grow"></span>
-  <button class="btn primary lg" id="gen-btn" data-blocked="{{ '0' if exported else '1' }}" data-post="/api/p/{{ p.run_id }}/rfq/generate" {{ 'disabled' if not exported }}>Generate RFQ letters</button>
+  <button class="btn primary lg" id="gen-btn" data-blocked="{{ '0' if exported else '1' }}" data-post="/api/p/{{ p.run_id }}/rfq/generate" {{ 'disabled' if not exported }}>{{ _("Generate RFQ letters") }}</button>
 </div>
 
 <details class="card pad" id="tpl" style="margin-top:1.5rem">
-  <summary><b>RFQ template</b> <span class="muted small">— {{ template.name }}{{ ' (uploaded for this project)' if custom_template else ' (company template)' }}</span></summary>
-  <p class="muted small" style="margin-top:.6rem">Every (…) or […] in the Word file is a field. Upload a different .docx for this project, or go back to the company template.</p>
+  <summary><b>{{ _("RFQ template") }}</b> <span class="muted small">— {{ template.name }}{{ ' (uploaded for this project)' if custom_template else ' (company template)' }}</span></summary>
+  <p class="muted small" style="margin-top:.6rem">{{ _("Every (…) or […] in the Word file is a field. Upload a different .docx for this project, or go back to the company template.") }}</p>
   <form class="row" data-ajax action="/api/p/{{ p.run_id }}/rfq/template" data-then="reload">
     <input type="file" name="template" accept=".docx" required class="grow">
-    <button class="btn" type="submit">Upload template</button>
+    <button class="btn" type="submit">{{ _("Upload template") }}</button>
   </form>
   {% if custom_template %}<form data-ajax action="/api/p/{{ p.run_id }}/rfq/template" data-then="reload" style="margin-top:.5rem">
-    <input type="hidden" name="reset" value="1"><button class="btn sm ghost" type="submit">Back to the company template</button></form>{% endif %}
+    <input type="hidden" name="reset" value="1"><button class="btn sm ghost" type="submit">{{ _("Back to the company template") }}</button></form>{% endif %}
 </details>
 {% endblock %}

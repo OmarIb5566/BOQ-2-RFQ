@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Admin") }} · BOQ → RFQ{% endblock %}
+{% block content %}
+<h1>{{ _("Admin console") }}</h1>
+<nav class="tabs" style="margin-bottom:1rem">
+  <a href="{{ url_for('admin.health_page') }}" class="{{ 'on' if section == 'health' }}">{{ _("System health") }}</a>
+  <a href="{{ url_for('admin.queue') }}" class="{{ 'on' if section == 'queue' }}">{{ _("Job queue") }}</a>
+  {% if me.role == 'admin' %}
+  <a href="{{ url_for('auth.users') }}" class="{{ 'on' if section == 'users' }}">{{ _("Users") }}</a>
+  <a href="{{ url_for('fleet_views.models') }}" class="{{ 'on' if section == 'models' }}">{{ _("AI models") }}</a>
+  <a href="{{ url_for('admin.audit') }}" class="{{ 'on' if section == 'audit' }}">{{ _("Audit log") }}</a>
+  <a href="{{ url_for('admin.settings') }}" class="{{ 'on' if section == 'settings' }}">{{ _("Settings") }}</a>
+  {% endif %}
+  <a href="{{ url_for('fleet_views.usage') }}" class="{{ 'on' if section == 'usage' }}">{{ _("Usage") }}</a>
+</nav>
+{% block admin %}{% endblock %}
+{% endblock %}

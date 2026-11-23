@@ -1,0 +1,32 @@
+{% extends "admin/layout.html" %}
+{% block admin %}
+<div class="row between" style="margin-bottom:.8rem">
+  <div class="muted small">{{ _("Worker mode") }}: <b>{{ mode }}</b> ·
+    {% for w in workers %}<span class="tag {{ 'ok' if now_ts - w.seen < 60 else 'bad' }}">{{ w.host }} · pid {{ w.pid }}{% if w.job_id %} · {{ _("busy") }}{% endif %}</span> {% else %}<span class="tag bad">{{ _("no worker running") }}</span>{% endfor %}
+  </div>
+  <form method="post" action="{{ url_for('admin.job_action', jid='worker', action='test') }}"><input type="hidden" name="_csrf" value="{{ csrf_token }}"><button class="btn sm">{{ _("Test the worker") }}</button></form>
+</div>
+<div class="card table-wrap scroll-y">
+<table class="t">
+  <thead><tr><th>{{ _("Job") }}</th><th>{{ _("Project") }}</th><th>{{ _("By") }}</th><th>{{ _("Status") }}</th><th>{{ _("Created") }}</th><th class="right">{{ _("Time") }}</th><th></th></tr></thead>
+  <tbody>
+  {% for j in rows %}
+  <tr>
+    <td><b>{{ j.label }}</b><div class="faint small">{{ j.kind }} · {{ j.id }}{% if j.attempts > 1 %} · {{ _("attempt") }} {{ j.attempts }}{% endif %}</div></td>
+    <td class="small">{% if j.run_id %}<a href="{{ url_for('main.project', run_id=j.run_id) }}">{{ j.pname or j.run_id }}</a>{% endif %}</td>
+    <td class="small">{{ j.uname or '' }}</td>
+    <td><span class="tag {{ {'done': 'ok', 'failed': 'bad', 'interrupted': 'bad', 'running': 'brand'}.get(j.status, '') }}">{{ _(j.status) }}</span>
+      {% if j.status in ('running', 'queued') %}<div class="small muted">{{ j.message }}</div>{% endif %}
+      {% if j.error and j.status != 'done' %}<div class="small" style="color:var(--bad)">{{ j.error[:200] }}</div>{% endif %}</td>
+    <td class="small nowrap">{{ j.created|ago }}</td>
+    <td class="right small">{% if j.seconds %}{{ '%.0f'|format(j.seconds) }} s{% elif j.eta_s is defined %}~{{ j.eta_s }} s {{ _("left") }}{% endif %}</td>
+    <td class="right nowrap">
+      {% if j.status in ('queued', 'running') %}<form method="post" action="{{ url_for('admin.job_action', jid=j.id, action='cancel') }}" style="display:inline"><input type="hidden" name="_csrf" value="{{ csrf_token }}"><button class="btn sm ghost">{{ _("Cancel") }}</button></form>{% endif %}
+      {% if j.status in ('failed', 'interrupted', 'cancelled') %}<form method="post" action="{{ url_for('admin.job_action', jid=j.id, action='retry') }}" style="display:inline"><input type="hidden" name="_csrf" value="{{ csrf_token }}"><button class="btn sm ghost">{{ _("Retry") }}</button></form>{% endif %}
+    </td>
+  </tr>
+  {% else %}<tr><td colspan="7" class="muted">{{ _("No jobs yet.") }}</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

@@ -4,19 +4,19 @@
   <div class="row between">
     <div>
       {% if s.status == 'exported' %}
-        <h2>✓ Exported and up to date</h2>
+        <h2>{{ _("✓ Exported and up to date") }}</h2>
         <p class="muted">One PDF set per work package: the BOQ cut-out (all original columns){{ ', its specification sections and its drawing sheets' if has_docs }}.</p>
       {% elif outdated %}
-        <h2 style="color:var(--warn)">The export is out of date</h2>
-        <p class="muted">The packages or their documents changed after the last export. Export again so the files and RFQs match.</p>
+        <h2 style="color:var(--warn)">{{ _("The export is out of date") }}</h2>
+        <p class="muted">{{ _("The packages or their documents changed after the last export. Export again so the files and RFQs match.") }}</p>
       {% else %}
-        <h2>Ready to export</h2>
-        <p class="muted">Creates one PDF set per work package{{ ' (BOQ cut-out, specs, drawings)' if has_docs }} and a ZIP of everything.</p>
+        <h2>{{ _("Ready to export") }}</h2>
+        <p class="muted">Creates one PDF set per work package{{ ' (BOQ cut-out, specs, drawings)' if has_docs }} {{ _('and a ZIP of everything.') }}</p>
       {% endif %}
-      {% if pending %}<div class="banner warn">Decide the <a href="{{ url_for('main.tab', run_id=p.run_id, tab='cases') }}">{{ pending|length }} open special case(s)</a> first.</div>{% endif %}
+      {% if pending %}<div class="banner warn">{{ _("Decide the") }} <a href="{{ url_for('main.tab', run_id=p.run_id, tab='cases') }}">{{ pending|length }} {{ _('open special case(s)') }}</a> {{ _("first.") }}</div>{% endif %}
     </div>
     <div class="row">
-      {% if zip %}<a class="btn" href="{{ rel(zip) }}?dl=1">⬇ Download all ({{ zip_size|size }})</a>{% endif %}
+      {% if zip %}<a class="btn" href="{{ rel(zip) }}?dl=1">⬇ {{ _('Download all') }} ({{ zip_size|size }})</a>{% endif %}
       <button class="btn {{ 'primary' if s.status != 'exported' }} lg" data-post="/api/p/{{ p.run_id }}/export" {{ 'disabled' if pending or job }}>
         {{ 'Export again' if s.zip_file else 'Export work packages' }}</button>
     </div>
@@ -24,16 +24,16 @@
 </div>
 
 {% if files|selectattr(1)|list %}
-<div class="row" style="margin-bottom:.75rem"><div class="search" style="width:340px"><input type="search" data-filter="#exp-table" placeholder="Filter packages …"></div></div>
+<div class="row" style="margin-bottom:.75rem"><div class="search" style="width:340px"><input type="search" data-filter="#exp-table" placeholder="{{ _('Filter packages …') }}"></div></div>
 <div class="card table-wrap">
 <table class="t" id="exp-table">
-  <thead><tr><th>WP</th><th>Work package</th><th>Files</th></tr></thead>
+  <thead><tr><th>WP</th><th>{{ _("Work package") }}</th><th>{{ _("Files") }}</th></tr></thead>
   <tbody>
   {% for wp, parts in files %}
     <tr><td class="nowrap"><b>{{ wp.wp_id }}</b></td>
       <td><a href="{{ url_for('main.package', run_id=p.run_id, key=wp.key) }}">{{ wp.name_en }}</a></td>
       <td class="row" style="gap:.4rem">{% for t, path in parts %}
-        <a class="btn sm" href="{{ rel(path) }}" target="_blank" title="Open">📄 {{ t }}</a>{% else %}<span class="muted small">not exported</span>{% endfor %}</td></tr>
+        <a class="btn sm" href="{{ rel(path) }}" target="_blank" title="{{ _('Open') }}">📄 {{ t }}</a>{% else %}<span class="muted small">{{ _("not exported") }}</span>{% endfor %}</td></tr>
   {% endfor %}
   </tbody>
 </table>

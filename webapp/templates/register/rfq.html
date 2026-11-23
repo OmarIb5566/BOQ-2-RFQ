@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}{{ r.number }} · {{ _("RFQ register") }}{% endblock %}
+{% block run %}{{ r.run_id }}{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="{{ url_for('register_views.register') }}">{{ _("RFQ register") }}</a> › {{ r.number }}</div>
+<div class="row between">
+  <div>
+    <h1>{{ r.number }} <span class="tag status-{{ r.status }}">{{ _(label[r.status]) }}</span>{% if r.overdue %} <span class="tag bad">⚠ {{ _("overdue") }}</span>{% endif %}</h1>
+    <p class="muted">{% if p %}<a href="{{ url_for('main.project', run_id=p.run_id) }}">{{ p.name }}</a> · {% endif %}{{ r.wp_id }} <span dir="auto">{{ r.package }}</span> · {{ _("Supplier") }}: <b dir="auto">{{ r.supplier or '—' }}</b></p>
+  </div>
+  <div class="row" id="rfq-moves" data-rfq="{{ r.id }}" data-version="{{ r.version }}">
+    {% for m in moves %}<button class="btn {{ 'primary' if loop.first }}" data-rfq-move="{{ m }}">→ {{ _(label[m]) }}</button>{% endfor %}
+  </div>
+</div>
+
+<div class="grid" style="grid-template-columns: 1fr 1fr; align-items:start">
+  <div class="card">
+    <div class="card-head"><h3 style="margin:0">{{ _("Details") }}</h3></div>
+    <div class="card-body stack">
+      {% if r.can_edit %}
+      <label class="field"><span>{{ _("Supplier") }}</span><input type="text" value="{{ r.supplier }}" data-rfq-field="supplier"></label>
+      <label class="field"><span>{{ _("Due date") }}</span><input type="date" value="{{ r.due_date or '' }}" data-rfq-field="due_date"></label>
+      <label class="field"><span>{{ _("Assigned to") }}</span><select data-rfq-field="assigned_to"><option value="">—</option>{% for u in people %}<option value="{{ u.id }}" {{ 'selected' if r.assigned_to == u.id }}>{{ u.full_name }}</option>{% endfor %}</select></label>
+      <label class="field"><span>{{ _("Notes") }}</span><textarea data-rfq-field="notes" rows="3" style="width:100%">{{ r.notes }}</textarea></label>
+      {% else %}
+      <p>{{ _("Due date") }}: {{ r.due_date or '—' }} · {{ _("Assigned to") }}: {{ r.assigned or '—' }}</p><p dir="auto">{{ r.notes }}</p>
+      {% endif %}
+      <div class="row">
+        {% if r.letter %}<a class="btn sm" href="{{ url_for('register_views.rfq_file', rfq_id=r.id, kind='letter') }}">⬇ {{ _("RFQ letter") }}</a>{% endif %}
+        {% if pricing %}<a class="btn sm" href="{{ url_for('register_views.rfq_file', rfq_id=r.id, kind='pricing') }}">⬇ {{ _("Pricing sheet for the supplier") }}</a>{% endif %}
+        {% if r.issued_at %}<span class="muted small">{{ _("Issued") }} {{ r.issued_at[:10] }}</span>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3 style="margin:0">{{ _("Quote") }}</h3></div>
+    <div class="card-body stack">
+      {% if r.quote_amount is not none %}<p><b style="font-size:1.2rem">{{ '{:,.2f}'.format(r.quote_amount) }}</b> {{ r.currency }}
+        {% if r.quote_file %} · <a href="{{ url_for('register_views.rfq_file', rfq_id=r.id, kind='quote') }}">{{ _("quotation file") }}</a>{% endif %}</p>
+        {% if quote %}<p class="small muted">{{ _("{n} rate(s) read from the pricing sheet", n=quote.rates|length - quote.missing) }}{% if quote.missing %} · <span class="overdue">{{ _("{n} item(s) without a rate", n=quote.missing) }}</span>{% endif %}</p>{% endif %}
+      {% else %}<p class="muted">{{ _("No quote recorded yet.") }}</p>{% endif %}
+      {% if r.can_edit and r.status not in ('cancelled', 'declined', 'awarded', 'not_awarded') %}
+      <form data-ajax data-then="reload" action="{{ url_for('register_views.rfq_action', rfq_id=r.id) }}" method="post" enctype="multipart/form-data" class="stack">
+        <input type="hidden" name="version" value="{{ r.version }}">
+        <label class="field"><span>{{ _("The supplier's priced sheet (.xlsx) or quotation (PDF)") }}</span><input type="file" name="quote" accept=".xlsx,.xlsm,.pdf" required></label>
+        <label class="field"><span>{{ _("Quoted amount (optional for a priced sheet — the total is read from it)") }}</span><input type="text" name="amount" inputmode="decimal"></label>
+        <button type="submit" class="btn">{{ _("Record the quote") }}</button>
+      </form>
+      {% endif %}
+      {% if p %}<a class="btn sm" href="{{ url_for('register_views.compare', run_id=r.run_id, wp_key=r.wp_key) }}">⚖ {{ _("Compare all bids for this package") }}</a>{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="grid" style="grid-template-columns: 1fr 1fr; align-items:start; margin-top:1rem">
+  <div class="card">
+    <div class="card-head"><h3 style="margin:0">{{ _("History") }}</h3></div>
+    <div class="table-wrap scroll-y" style="max-height:50vh"><table class="t"><tbody>
+      {% for e in events %}<tr><td class="small nowrap" title="{{ e.ts }}">{{ e.ts|ago }}</td><td class="small"><b>{{ e.who or '—' }}</b></td>
+        <td class="small">{% if e.action == 'status' %}{{ _(label.get(e.from_status, e.from_status)) }} → <b>{{ _(label.get(e.to_status, e.to_status)) }}</b>{% else %}{{ _(e.action) }}{% endif %}{% if e.note %}<div class="muted" dir="auto">{{ e.note }}</div>{% endif %}</td></tr>{% endfor %}
+    </tbody></table></div>
+  </div>
+  {% if p %}
+  <div class="card comments" data-comments="rfq:{{ r.id }}">
+    <div class="card-head"><h3 style="margin:0">{{ _("Comments") }}</h3></div>
+    <div class="card-body">
+      <div class="c-list"><span class="spin"></span></div>
+      <form><textarea placeholder="{{ _('Write a comment … type @username to notify a colleague') }}" maxlength="5000"></textarea>
+        <div class="row between" style="margin-top:.4rem"><span></span><button class="btn sm primary">{{ _("Comment") }}</button></div></form>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

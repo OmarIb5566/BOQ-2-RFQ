@@ -1,19 +1,19 @@
 {% extends "base.html" %}
-{% block title %}Account · BOQ → RFQ{% endblock %}
+{% block title %}{{ _('Account') }} · BOQ → RFQ{% endblock %}
 {% block pageclass %}narrow{% endblock %}
 {% block content %}
-<h1>Your account</h1>
-<p class="muted">{{ me.username }} · {{ me.role }}{% if me.last_login %} · last sign-in {{ me.last_login|ago }}{% endif %}</p>
+<h1>{{ _('Your account') }}</h1>
+<p class="muted">{{ me.username }} · {{ _(role_names.get(me.role, me.role)) }}{% if me.last_login %} · {{ _('last sign-in') }} {{ me.last_login|ago }}{% endif %}</p>
 <form method="post" class="card pad">
   <input type="hidden" name="_csrf" value="{{ csrf_token }}">
-  <label class="field"><span>Your name</span><input type="text" name="full_name" value="{{ me.full_name }}"></label>
-  <h3 style="margin-top:1.2rem">Change password</h3>
-  <p class="muted small">Leave empty to keep your password.</p>
-  <label class="field"><span>Current password</span><input type="password" name="current" autocomplete="current-password"></label>
+  <label class="field"><span>{{ _('Your name') }}</span><input type="text" name="full_name" value="{{ me.full_name }}"></label>
+  <h3 style="margin-top:1.2rem">{{ _('Change password') }}</h3>
+  <p class="muted small">{{ _('Leave empty to keep your password.') }}</p>
+  <label class="field"><span>{{ _('Current password') }}</span><input type="password" name="current" autocomplete="current-password"></label>
   <div class="grid c2">
-    <label class="field"><span>New password</span><input type="password" name="password" minlength="8" autocomplete="new-password"></label>
-    <label class="field"><span>Repeat new password</span><input type="password" name="password2" minlength="8" autocomplete="new-password"></label>
+    <label class="field"><span>{{ _('New password') }}</span><input type="password" name="password" minlength="8" autocomplete="new-password"></label>
+    <label class="field"><span>{{ _('Repeat new password') }}</span><input type="password" name="password2" minlength="8" autocomplete="new-password"></label>
   </div>
-  <button class="btn primary">Save</button>
+  <button class="btn primary">{{ _('Save') }}</button>
 </form>
 {% endblock %}

@@ -1,11 +1,11 @@
 {% extends "project/layout.html" %}
 {% block tab %}
-<div class="crumbs"><a href="{{ url_for('main.tab', run_id=p.run_id, tab='packages') }}">Work packages</a> › {{ wp.wp_id }}</div>
+<div class="crumbs"><a href="{{ url_for('main.tab', run_id=p.run_id, tab='packages') }}">{{ _("Work packages") }}</a> › {{ wp.wp_id }}</div>
 <div class="row between" style="margin-bottom:1rem">
   <div>
-    <h2 style="margin:0"><span class="muted">{{ wp.wp_id }}</span> <span class="editable" title="Click to rename this package" data-rename="/api/p/{{ p.run_id }}/wp/rename" data-extra='{{ {"key": wp.key}|tojson }}'>{{ wp.name_en }}</span></h2>
-    <div class="muted small">{% if wp.name_ar %}<span class="rtl">{{ wp.name_ar }}</span> · {% endif %}Div {{ wp.division or '—' }} {{ wp.division_name }} · {{ rows|length }} item(s)
-      {% if renamed %} · <a href="#" data-post="/api/p/{{ p.run_id }}/wp/rename" data-body='{{ {"key": wp.key, "name": ""}|tojson }}'>restore the flowchart name</a>{% endif %}</div>
+    <h2 style="margin:0"><span class="muted">{{ wp.wp_id }}</span> <span class="editable" title="{{ _('Click to rename this package') }}" data-rename="/api/p/{{ p.run_id }}/wp/rename" data-extra='{{ {"key": wp.key}|tojson }}'>{{ wp.name_en }}</span></h2>
+    <div class="muted small">{% if wp.name_ar %}<span class="rtl">{{ wp.name_ar }}</span> · {% endif %}Div {{ wp.division or '—' }} {{ wp.division_name }} · {{ rows|length }} {{ _('item(s)') }}
+      {% if renamed %} · <a href="#" data-post="/api/p/{{ p.run_id }}/wp/rename" data-body='{{ {"key": wp.key, "name": ""}|tojson }}'>{{ _("restore the flowchart name") }}</a>{% endif %}</div>
   </div>
   <div class="row">
     {% for t, path in files %}<a class="btn sm" href="{{ rel(path) }}" target="_blank">📄 {{ t }}</a>{% endfor %}
@@ -15,41 +15,64 @@
 
 <div class="grid" style="grid-template-columns: 3fr 2fr; align-items:start">
   <div class="card">
-    <div class="card-head"><h3 style="margin:0">Items</h3><span class="grow"></span>
-      <div class="search" style="width:240px"><input type="search" class="sm" data-filter="#pkg-items" placeholder="Filter …"></div></div>
+    <div class="card-head"><h3 style="margin:0">{{ _("Items") }}</h3><span class="grow"></span>
+      <div class="search" style="width:240px"><input type="search" class="sm" data-filter="#pkg-items" placeholder="{{ _('Filter …') }}"></div></div>
     <div class="table-wrap scroll-y">
       <table class="t" id="pkg-items">
-        <thead><tr><th>Item</th><th>Description</th><th>Unit</th><th class="right">Qty</th></tr></thead>
+        <thead><tr><th>{{ _("Item") }}</th><th>{{ _("Description") }}</th><th>{{ _("Unit") }}</th><th class="right">{{ _("Qty") }}</th></tr></thead>
         <tbody>{% for r in rows %}<tr><td class="nowrap">{{ r.no }}</td><td class="desc">{{ r.desc }}<div class="muted small">{{ r.section }}</div></td><td>{{ r.unit }}</td><td class="right nowrap">{{ r.qty }}</td></tr>{% endfor %}</tbody>
       </table>
     </div>
-    <div class="card-body small muted">To move an item to another package, use the <a href="{{ url_for('main.tab', run_id=p.run_id, tab='items') }}">Items</a> tab.</div>
+    <div class="card-body small muted">{{ _("To move an item to another package, use the") }} <a href="{{ url_for('main.tab', run_id=p.run_id, tab='items') }}">{{ _("Items") }}</a> {{ _("tab.") }}</div>
   </div>
 
   <div class="card">
-    <div class="card-head"><h3 style="margin:0">Specs &amp; drawings sent with this package</h3></div>
+    <div class="card-head"><h3 style="margin:0">{{ _("Specs & drawings sent with this package") }}</h3></div>
     <div class="card-body">
       {% if not has_docs %}
-        <p class="muted">No specifications or drawings were uploaded with this project.</p>
+        <p class="muted">{{ _("No specifications or drawings were uploaded with this project.") }}</p>
       {% else %}
         {% for x in links %}
           <div class="row" style="padding:.45rem 0; border-bottom:1px solid var(--line); align-items:flex-start">
             <span class="tag {{ 'brand' if x.l.kind == 'spec' else 'violet' }}">{{ 'Spec' if x.l.kind == 'spec' else 'Sheet' }}</span>
             <div class="grow small"><b>{{ x.label }}</b>
               <div class="muted">{% if x.l.confidence < 0.7 %}⚠ {% endif %}{{ x.l.reason }} <span class="faint">({{ x.l.method }})</span></div></div>
-            <button class="btn ghost sm" title="Remove from this package" data-post="/api/p/{{ p.run_id }}/docs/link" data-body='{{ {"wp_key": wp.key, "ref": x.l.ref, "on": false}|tojson }}'>✕</button>
+            <button class="btn ghost sm" title="{{ _('Remove from this package') }}" data-post="/api/p/{{ p.run_id }}/docs/link" data-body='{{ {"wp_key": wp.key, "ref": x.l.ref, "on": false}|tojson }}'>✕</button>
           </div>
         {% else %}
-          <p class="muted">Nothing attached yet.</p>
+          <p class="muted">{{ _("Nothing attached yet.") }}</p>
         {% endfor %}
         {% if addable %}
         <form class="row" style="margin-top:.8rem" data-post-form="/api/p/{{ p.run_id }}/docs/link" data-key="ref" data-body='{{ {"wp_key": wp.key, "on": true}|tojson }}'>
-          <select name="ref" class="sm grow"><option value="">Add a spec section or sheet …</option>
+          <select name="ref" class="sm grow"><option value="">{{ _("Add a spec section or sheet …") }}</option>
             {% for uid, label in addable %}<option value="{{ uid }}">{{ label }}</option>{% endfor %}</select>
-          <button class="btn sm">Add</button>
+          <button class="btn sm">{{ _("Add") }}</button>
         </form>
         {% endif %}
       {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="grid" style="grid-template-columns: 1fr 2fr; align-items:start; margin-top:1rem">
+  <div class="card">
+    <div class="card-head"><h3 style="margin:0">{{ _("Owner of this package") }}</h3></div>
+    <div class="card-body">
+      {% if can_edit %}
+      <select class="sm" style="width:100%" data-change-post="/api/p/{{ p.run_id }}/owner" data-key="user_id" data-body='{{ {"wp_key": wp.key}|tojson }}'>
+        <option value="">{{ _("Nobody assigned") }}</option>
+        {% for u in editors %}<option value="{{ u.id }}" {{ 'selected' if owner and owner.user_id == u.id }}>{{ u.full_name }}</option>{% endfor %}
+      </select>
+      <p class="hint">{{ _("The owner is notified, and hears about new comments on this package.") }}</p>
+      {% else %}<p>{{ owner.full_name if owner else _("Nobody assigned") }}</p>{% endif %}
+    </div>
+  </div>
+  <div class="card comments" id="comments" data-comments="wp:{{ wp.key }}">
+    <div class="card-head"><h3 style="margin:0">{{ _("Comments") }}</h3></div>
+    <div class="card-body">
+      <div class="c-list"><span class="spin"></span></div>
+      <form><textarea placeholder="{{ _('Write a comment … type @username to notify a colleague') }}" maxlength="5000"></textarea>
+        <div class="row between" style="margin-top:.4rem"><span class="hint">@{{ me.username }}</span><button class="btn sm primary">{{ _("Comment") }}</button></div></form>
     </div>
   </div>
 </div>

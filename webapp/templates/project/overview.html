@@ -1,47 +1,47 @@
 {% extends "project/layout.html" %}
 {% block tab %}
 <div class="grid c4" style="margin-bottom:1rem">
-  <a class="card stat" href="{{ url_for('main.tab', run_id=p.run_id, tab='items') }}"><div class="n">{{ s.document.items|length }}</div><div class="l">BOQ items in {{ boqs|length }} BOQ file(s)</div></a>
-  <a class="card stat" href="{{ url_for('main.tab', run_id=p.run_id, tab='packages') }}"><div class="n">{{ s.plan.work_packages|length }}</div><div class="l">work packages</div></a>
-  <a class="card stat" href="{{ url_for('main.tab', run_id=p.run_id, tab='cases') }}"><div class="n" style="{{ 'color:var(--warn)' if pending }}">{{ pending|length }}</div><div class="l">special cases open (of {{ s.plan.proposals|length }})</div></a>
-  {% if has_docs %}<a class="card stat" href="{{ url_for('main.tab', run_id=p.run_id, tab='documents') }}"><div class="n">{{ s.documents.sections|length }} · {{ s.documents.sheets|length }}</div><div class="l">spec sections · drawing sheets</div></a>
-  {% else %}<div class="card stat"><div class="n faint">—</div><div class="l">no specs / drawings uploaded</div></div>{% endif %}
+  <a class="card stat" href="{{ url_for('main.tab', run_id=p.run_id, tab='items') }}"><div class="n">{{ s.document.items|length }}</div><div class="l">{{ _('BOQ items in') }} {{ boqs|length }} {{ _('BOQ file(s)') }}</div></a>
+  <a class="card stat" href="{{ url_for('main.tab', run_id=p.run_id, tab='packages') }}"><div class="n">{{ s.plan.work_packages|length }}</div><div class="l">{{ _("work packages") }}</div></a>
+  <a class="card stat" href="{{ url_for('main.tab', run_id=p.run_id, tab='cases') }}"><div class="n" style="{{ 'color:var(--warn)' if pending }}">{{ pending|length }}</div><div class="l">{{ _('special cases open (of') }} {{ s.plan.proposals|length }})</div></a>
+  {% if has_docs %}<a class="card stat" href="{{ url_for('main.tab', run_id=p.run_id, tab='documents') }}"><div class="n">{{ s.documents.sections|length }} · {{ s.documents.sheets|length }}</div><div class="l">{{ _("spec sections · drawing sheets") }}</div></a>
+  {% else %}<div class="card stat"><div class="n faint">—</div><div class="l">{{ _("no specs / drawings uploaded") }}</div></div>{% endif %}
 </div>
 
 <div class="grid c2">
   <div class="card">
-    <div class="card-head"><h3 style="margin:0">Files</h3></div>
+    <div class="card-head"><h3 style="margin:0">{{ _("Files") }}</h3></div>
     <div class="table-wrap"><table class="t">
-      <thead><tr><th>File</th><th>Read as</th><th class="right">Content</th></tr></thead>
+      <thead><tr><th>{{ _("File") }}</th><th>{{ _("Read as") }}</th><th class="right">{{ _("Content") }}</th></tr></thead>
       <tbody>
-        {% for f, n in boqs %}<tr><td>{{ f.filename }}</td><td><span class="tag ok">BOQ</span></td><td class="right">{{ n }} items</td></tr>{% endfor %}
+        {% for f, n in boqs %}<tr><td>{{ f.filename }}</td><td><span class="tag ok">BOQ</span></td><td class="right">{{ n }} {{ _('items') }}</td></tr>{% endfor %}
         {% for f in doc_files %}<tr>
           <td>{{ f.filename }}<div class="muted small">{{ f.note }}</div></td>
           <td><span class="tag {{ 'brand' if f.kind == 'spec' else 'violet' if f.kind == 'drawing' else '' }}">{{ {'spec': 'Specification', 'drawing': 'Drawings', 'ignored': 'Not used'}[f.kind] }}</span></td>
-          <td class="right">{{ f.pages }} page(s)</td></tr>{% endfor %}
+          <td class="right">{{ f.pages }} {{ _('page(s)') }}</td></tr>{% endfor %}
       </tbody>
     </table></div>
   </div>
   <div class="stack">
     {% if warnings or notes or low_conf %}
     <div class="card pad">
-      <h3>Worth a look</h3>
+      <h3>{{ _("Worth a look") }}</h3>
       <ul style="margin:.3rem 0 0 1rem; padding:0">
-        {% if low_conf %}<li>{{ low_conf }} item(s) were classified with low confidence — <a href="{{ url_for('main.tab', run_id=p.run_id, tab='items') }}?low=1">review them</a>.</li>{% endif %}
+        {% if low_conf %}<li>{{ low_conf }} {{ _('item(s) were classified with low confidence —') }} <a href="{{ url_for('main.tab', run_id=p.run_id, tab='items') }}?low=1">{{ _("review them") }}</a>.</li>{% endif %}
         {% for n in notes %}<li class="muted">{{ n }}</li>{% endfor %}
         {% for w in warnings[:12] %}<li class="muted small">{{ w }}</li>{% endfor %}
       </ul>
     </div>
     {% endif %}
     <div class="card pad">
-      <h3>Recent jobs</h3>
+      <h3>{{ _("Recent jobs") }}</h3>
       {% for j in recent_jobs %}
         <div class="row between small" style="padding:.3rem 0; border-bottom:1px solid var(--line)">
           <span><b>{{ j.label }}</b> · {{ j.message }}{% if j.error %} <span style="color:var(--bad)">{{ j.error[:120] }}</span>{% endif %}</span>
           <span class="tag {{ 'ok' if j.status == 'done' else 'bad' if j.status in ('failed', 'interrupted') else 'brand' }}">{{ j.status }}</span>
         </div>
-      {% else %}<p class="muted">None yet.</p>{% endfor %}
-      <a class="small" href="{{ url_for('main.tab', run_id=p.run_id, tab='activity') }}">Full activity →</a>
+      {% else %}<p class="muted">{{ _("None yet.") }}</p>{% endfor %}
+      <a class="small" href="{{ url_for('main.tab', run_id=p.run_id, tab='activity') }}">{{ _("Full activity →") }}</a>
     </div>
   </div>
 </div>

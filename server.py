@@ -26,12 +26,14 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="BOQ → RFQ web app")
     ap.add_argument("--port", type=int, default=8080)
     ap.add_argument("--lan", action="store_true", help="listen on the office network, not only on this PC")
+    ap.add_argument("--host", default=None, help="address to listen on (overrides --lan); behind a reverse proxy: "
+                                                  "127.0.0.1")
     ap.add_argument("--threads", type=int, default=16)
     ap.add_argument("--no-browser", action="store_true")
     args = ap.parse_args()
 
     app = create_app()
-    host = "0.0.0.0" if args.lan else "127.0.0.1"
+    host = args.host or ("0.0.0.0" if args.lan else "127.0.0.1")
     url = f"http://127.0.0.1:{args.port}"
     first_run = setup_url(app, url)
     print("=" * 64)
@@ -47,6 +49,7 @@ def main() -> int:
     if first_run:
         print("  FIRST RUN : create the administrator account here (one-time link):")
         print(f"              {first_run}")
+    print(f"  Jobs      : {'separate worker.py service' if app.config['WORKER_MODE'] == 'external' else 'run by this server'}")
     print("  Close this window to stop the app.")
     print("=" * 64)
     if not args.no_browser:

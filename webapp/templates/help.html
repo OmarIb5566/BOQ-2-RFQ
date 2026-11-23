@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Help") }} · BOQ → RFQ{% endblock %}
+{% block pageclass %}narrow{% endblock %}
+{% block content %}
+<h1>{{ _("Help") }}</h1>
+<div class="card pad stack">
+  <h3>{{ _("How a project goes") }}</h3>
+  <ol>{% for t, d in tour %}<li><b>{{ _(t) }}</b> — {{ _(d) }}</li>{% endfor %}</ol>
+</div>
+<div class="card pad stack" style="margin-top:1rem">
+  <h3>{{ _("Good to know") }}</h3>
+  <ul>
+    <li>{{ _("Analyses run one after the other on the AI server; you can leave the page — the bell and the Jobs menu tell you when it is done.") }}</li>
+    <li>{{ _("If someone else changes a project you have open, a banner offers to show their changes; your next change is refused until you reload, so nobody's work is overwritten.") }}</li>
+    <li>{{ _("Type @username in a comment to notify a colleague.") }}</li>
+    <li>{{ _("A revised BOQ is uploaded from the project menu (⋯ › Upload a revised BOQ): decisions and corrections carry over, and the comparison shows what changed.") }}</li>
+    <li>{{ _("You are signed out after a period of inactivity; tick “Keep me signed in” on your own computer only.") }}</li>
+  </ul>
+  <h3>{{ _("Keyboard") }}</h3>
+  <p><span class="kbd">/</span> {{ _("jumps to the search box.") }}</p>
+  <h3>{{ _("Roles") }}</h3>
+  <ul>
+    <li><b>{{ _("Administrator") }}</b> — {{ _("users, settings, AI models, every project.") }}</li>
+    <li><b>{{ _("Manager") }}</b> — {{ _("every project, approves and awards RFQs, sees the job queue.") }}</li>
+    <li><b>{{ _("Engineer") }}</b> — {{ _("creates projects and works on own, shared and member projects.") }}</li>
+    <li><b>{{ _("Viewer") }}</b> — {{ _("reads and comments, changes nothing.") }}</li>
+  </ul>
+  <p class="muted">{{ _("Questions or problems: ask your administrator.") }} · <a href="{{ url_for('help_views.whats_new') }}">{{ _("What's new") }}</a></p>
+</div>
+{% endblock %}

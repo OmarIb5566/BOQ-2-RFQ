@@ -4,7 +4,7 @@
 {% block content %}
 <div class="card pad empty">
   <div class="big">{{ '🔒' if code == 403 else '🧭' }}</div>
-  <h1>{{ msg }}</h1>
-  <p><a class="btn primary" href="{{ url_for('main.projects') if me else url_for('auth.login') }}">Back to projects</a></p>
+  <h1>{{ _(msg) }}</h1>
+  <p><a class="btn primary" href="{{ url_for('main.projects') if me else url_for('auth.login') }}">{{ _('Back to projects') }}</a></p>
 </div>
 {% endblock %}

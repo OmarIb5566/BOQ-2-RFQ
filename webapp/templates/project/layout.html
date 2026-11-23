@@ -3,30 +3,38 @@
 {% block run %}{{ p.run_id }}{% endblock %}
 {% block bodyattrs %}{% if job %}data-always-poll="1"{% endif %}{% endblock %}
 {% block content %}
-<div id="projhead">
-  <div class="crumbs"><a href="{{ url_for('main.projects') }}">Projects</a> › {{ p.name }}</div>
+<div id="projhead" data-version="{{ version }}" data-can-edit="{{ 1 if can_edit else 0 }}">
+  <div class="crumbs"><a href="{{ url_for('main.projects') }}">{{ _("Projects") }}</a> › {{ p.name }}</div>
   <div class="proj-head">
     <div class="grow">
       <div class="proj-title">
-        <button class="star {{ 'on' if p.starred }}" title="Star" data-post="/api/p/{{ p.run_id }}/project" data-body='{"starred": {{ 0 if p.starred else 1 }}}'>★</button>
-        <h1><span class="editable" title="Click to rename" data-rename="/api/p/{{ p.run_id }}/project">{{ p.name }}</span></h1>
-        <span class="tag stage-{{ p.stage }}">{{ stage_label.get(p.stage, p.stage) }}</span>
-        {% if not p.shared %}<span class="tag">🔒 private</span>{% endif %}
+        <button class="star {{ 'on' if p.starred }}" title="{{ _('Star') }}" data-post="/api/p/{{ p.run_id }}/project" data-body='{"starred": {{ 0 if p.starred else 1 }}}'>★</button>
+        <h1>{% if can_admin %}<span class="editable" title="{{ _('Click to rename') }}" data-rename="/api/p/{{ p.run_id }}/project">{{ p.name }}</span>{% else %}{{ p.name }}{% endif %}</h1>
+        <span class="tag stage-{{ p.stage }}">{{ _(stage_label.get(p.stage, p.stage)) }}</span>
+        {% if p.revision %}<span class="tag violet">{{ _("Revision") }} {{ p.revision }}</span>{% endif %}
+        {% if not p.shared %}<span class="tag">🔒 {{ _("private") }}</span>{% endif %}
+        {% if not can_edit %}<span class="tag">👁 {{ _("read only") }}</span>{% endif %}
+        <span id="presence" class="presence hidden" title=""></span>
       </div>
-      <div class="muted small">{{ p.summary }} · owner {{ p.owner_name or '—' }} · updated {{ p.updated|ago }}{% if p.updated_by_name %} by {{ p.updated_by_name }}{% endif %}</div>
+      <div class="muted small">{{ t_summary(p.summary) }} · {{ _("owner") }} {{ p.owner_name or '—' }} · {{ _("updated") }} {{ p.updated|ago }}{% if p.updated_by_name %} {{ _("by") }} {{ p.updated_by_name }}{% endif %}</div>
     </div>
     <div class="row">
-      {% if pending %}<a class="btn primary" href="{{ url_for('main.tab', run_id=p.run_id, tab='cases') }}">Decide {{ pending|length }} case(s) →</a>
-      {% elif s.status != 'exported' %}<a class="btn primary" href="{{ url_for('main.tab', run_id=p.run_id, tab='export') }}">{{ 'Export again →' if outdated else 'Export →' }}</a>
-      {% else %}<a class="btn primary" href="{{ url_for('main.tab', run_id=p.run_id, tab='rfq') }}">RFQs →</a>{% endif %}
+      {% if pending %}<a class="btn primary" href="{{ url_for('main.tab', run_id=p.run_id, tab='cases') }}">{{ _("Decide {n} case(s)", n=pending|length) }} →</a>
+      {% elif s.status != 'exported' %}<a class="btn primary" href="{{ url_for('main.tab', run_id=p.run_id, tab='export') }}">{{ _('Export again') if outdated else _('Export') }} →</a>
+      {% else %}<a class="btn primary" href="{{ url_for('main.tab', run_id=p.run_id, tab='rfq') }}">{{ _("RFQs") }} →</a>{% endif %}
       <details class="menu">
-        <summary class="btn ghost" title="More">⋯</summary>
+        <summary class="btn ghost" title="{{ _('More') }}">⋯</summary>
         <div class="pop">
-          <button data-post="/api/p/{{ p.run_id }}/duplicate" data-confirm="Make a copy of this project? The copy can be changed without touching this one.">Duplicate project</button>
+          <a href="{{ url_for('collab_views.members', run_id=p.run_id) }}">{{ _("Members & sharing") }}</a>
+          <a href="{{ url_for('revisions_views.revisions', run_id=p.run_id) }}">{{ _("Revisions & history") }}</a>
+          {% if can_edit %}<a href="{{ url_for('revisions_views.upload_revision', run_id=p.run_id) }}">{{ _("Upload a revised BOQ") }}</a>{% endif %}
+          <a href="{{ url_for('register_views.register', run=p.run_id) }}">{{ _("RFQ register of this project") }}</a>
+          <a href="{{ url_for('main.print_view', run_id=p.run_id) }}" target="_blank">{{ _("Print view") }}</a>
+          {% if me.role != 'viewer' %}<button data-post="/api/p/{{ p.run_id }}/duplicate" data-confirm="{{ _('Make a copy of this project? The copy can be changed without touching this one.') }}">{{ _("Duplicate project") }}</button>{% endif %}
           {% if can_admin %}
-          <button data-post="/api/p/{{ p.run_id }}/project" data-body='{"shared": {{ 0 if p.shared else 1 }}}'>{{ 'Make private' if p.shared else 'Share with the team' }}</button>
+          <button data-post="/api/p/{{ p.run_id }}/project" data-body='{"shared": {{ 0 if p.shared else 1 }}}'>{{ _('Make private') if p.shared else _('Share with the team') }}</button>
           <hr>
-          <button style="color:var(--bad)" data-post="/api/p/{{ p.run_id }}/project" data-body='{"deleted": 1}' data-confirm="Move this project to the trash? It can be restored from Projects › Trash." data-then="go:{{ url_for('main.projects') }}">Delete project</button>
+          <button style="color:var(--bad)" data-post="/api/p/{{ p.run_id }}/project" data-body='{"deleted": 1}' data-confirm="{{ _('Move this project to the trash? It can be restored from Projects › Trash.') }}" data-then="go:{{ url_for('main.projects') }}">{{ _("Delete project") }}</button>
           {% endif %}
         </div>
       </details>
@@ -35,11 +43,11 @@
 
   {% set exported = s.status == 'exported' %}
   <nav class="steps">
-    <a class="step done" href="{{ url_for('main.tab', run_id=p.run_id, tab='overview') }}"><span class="num">✓</span>Upload &amp; analyse</a>
-    <a class="step {{ 'now' if pending else 'done' }}" href="{{ url_for('main.tab', run_id=p.run_id, tab='cases') }}"><span class="num">{{ '2' if pending else '✓' }}</span>Special cases</a>
-    <a class="step {{ 'done' if not pending else '' }}" href="{{ url_for('main.tab', run_id=p.run_id, tab='packages') }}"><span class="num">{{ '✓' if not pending else '3' }}</span>Review packages</a>
-    <a class="step {{ 'done' if exported else ('now' if not pending else '') }}" href="{{ url_for('main.tab', run_id=p.run_id, tab='export') }}"><span class="num">{{ '✓' if exported else '4' }}</span>Export</a>
-    <a class="step {{ 'done' if s.rfq.get('files') else ('now' if exported else '') }}" href="{{ url_for('main.tab', run_id=p.run_id, tab='rfq') }}"><span class="num">{{ '✓' if s.rfq.get('files') else '5' }}</span>RFQ letters</a>
+    <a class="step done" href="{{ url_for('main.tab', run_id=p.run_id, tab='overview') }}"><span class="num">✓</span>{{ _("Upload & analyse") }}</a>
+    <a class="step {{ 'now' if pending else 'done' }}" href="{{ url_for('main.tab', run_id=p.run_id, tab='cases') }}"><span class="num">{{ '2' if pending else '✓' }}</span>{{ _("Special cases") }}</a>
+    <a class="step {{ 'done' if not pending else '' }}" href="{{ url_for('main.tab', run_id=p.run_id, tab='packages') }}"><span class="num">{{ '✓' if not pending else '3' }}</span>{{ _("Review packages") }}</a>
+    <a class="step {{ 'done' if exported else ('now' if not pending else '') }}" href="{{ url_for('main.tab', run_id=p.run_id, tab='export') }}"><span class="num">{{ '✓' if exported else '4' }}</span>{{ _("Export") }}</a>
+    <a class="step {{ 'done' if s.rfq.get('files') else ('now' if exported else '') }}" href="{{ url_for('main.tab', run_id=p.run_id, tab='rfq') }}"><span class="num">{{ '✓' if s.rfq.get('files') else '5' }}</span>{{ _("RFQ letters") }}</a>
   </nav>
 
   <div id="jobbar" class="banner info {{ '' if job else 'hidden' }}">
@@ -49,13 +57,13 @@
     <div class="bar"><i style="width:{{ ((job.progress if job else 0) * 100)|round|int }}%"></i></div>
   </div>
   {% if outdated and tab != 'export' %}
-  <div class="banner warn">⚠ The packages changed after the last export — <a href="{{ url_for('main.tab', run_id=p.run_id, tab='export') }}">export again</a> so the PDFs and RFQs match.</div>
+  <div class="banner warn">⚠ {{ _("The packages changed after the last export —") }} <a href="{{ url_for('main.tab', run_id=p.run_id, tab='export') }}">{{ _("export again") }}</a> {{ _("so the PDFs and RFQs match.") }}</div>
   {% endif %}
 
   <nav class="tabs">
     {% for k, l in tabs %}
       {% if k != 'documents' or has_docs %}
-      <a class="{{ 'on' if tab == k }}" href="{{ url_for('main.tab', run_id=p.run_id, tab=k) }}">{{ l }}
+      <a class="{{ 'on' if tab == k }}" href="{{ url_for('main.tab', run_id=p.run_id, tab=k) }}">{{ _(l) }}
         {% if k == 'cases' and counts.cases %}<span class="cnt hot">{{ counts.cases }}</span>
         {% elif k in counts and k != 'cases' %}<span class="cnt">{{ counts[k] }}</span>{% endif %}</a>
       {% endif %}

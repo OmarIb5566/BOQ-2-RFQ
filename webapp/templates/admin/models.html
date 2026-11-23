@@ -1,0 +1,38 @@
+{% extends "admin/layout.html" %}
+{% block admin %}
+{% if not names %}<div class="banner bad">{{ _("The model server is not reachable, or has no local models. Start Ollama and pull the models.") }}</div>{% endif %}
+<form method="post" class="stack">
+  <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+  <div class="card table-wrap">
+  <table class="t">
+    <thead><tr><th>{{ _("Role") }}</th><th>{{ _("Model") }}</th><th>{{ _("Fallbacks (in order)") }}</th><th>{{ _("Status") }}</th></tr></thead>
+    <tbody>
+    {% for r in roles %}
+    <tr>
+      <td style="max-width:280px"><b>{{ _(r|capitalize) }}</b><div class="small muted">{{ _(role_help[r]) }}</div></td>
+      <td><select name="{{ r }}" class="sm">
+        {% if c[r] not in names %}<option value="{{ c[r] }}" selected>{{ c[r] }} ({{ _("not installed") }})</option>{% endif %}
+        {% for n in names %}<option value="{{ n }}" {{ 'selected' if n == c[r] }}>{{ n }} · {{ '%.1f'|format(sizes[n] / 1e9) }} GB</option>{% endfor %}
+      </select></td>
+      <td><select name="fallback_{{ r }}" class="sm" multiple size="3">
+        {% for n in names %}<option value="{{ n }}" {{ 'selected' if n in c.fallbacks.get(r, []) }}>{{ n }}</option>{% endfor %}
+      </select></td>
+      <td class="small"><span class="dot {{ 'ok' if status[r].ok == True else ('bad' if status[r].ok == False else '') }}"></span> {{ status[r].detail }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <div class="card pad stack">
+    <div class="row" style="gap:1.5rem">
+      <label class="check"><input type="radio" name="profile" value="staged" {{ 'checked' if c.profile != 'resident' }}> <b>{{ _("Staged") }}</b> <span class="muted small">{{ _("one GPU: one model in memory at a time") }}</span></label>
+      <label class="check"><input type="radio" name="profile" value="resident" {{ 'checked' if c.profile == 'resident' }}> <b>{{ _("Resident") }}</b> <span class="muted small">{{ _("several GPUs: every model stays loaded") }}</span></label>
+    </div>
+    <label class="check"><input type="checkbox" name="cache_on" {{ 'checked' if c.cache_on }}> {{ _("Reuse answers to identical questions (re-runs of unchanged BOQs cost nothing)") }}</label>
+    <label class="check"><input type="checkbox" name="memory_on" {{ 'checked' if c.memory_on }}> {{ _("Remember users' corrections: the same item text gets the category a user chose before") }}</label>
+    <label class="check"><input type="checkbox" name="verify_on" {{ 'checked' if c.verify_on }}> {{ _("Second opinion: a different model re-checks doubtful items and flags disagreements") }}</label>
+    <p class="hint">{{ _("Only models installed on this server are offered; cloud models are never used.") }} {{ _("Measure with the benchmark before changing the defaults (see the admin manual).") }}</p>
+  </div>
+  <div><button class="btn primary">{{ _("Save") }}</button></div>
+</form>
+{% endblock %}

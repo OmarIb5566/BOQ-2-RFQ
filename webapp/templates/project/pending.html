@@ -4,16 +4,16 @@
 {% block bodyattrs %}{% if p.stage != 'failed' %}data-pending="1" data-always-poll="1"{% endif %}{% endblock %}
 {% block pageclass %}narrow{% endblock %}
 {% block content %}
-<div class="crumbs"><a href="{{ url_for('main.projects') }}">Projects</a> › {{ p.name }}</div>
+<div class="crumbs"><a href="{{ url_for('main.projects') }}">{{ _("Projects") }}</a> › {{ p.name }}</div>
 <h1>{{ p.name }}</h1>
 {% if p.stage == 'failed' %}
   <div class="card pad">
-    <h2 style="color:var(--bad)">The analysis did not finish</h2>
+    <h2 style="color:var(--bad)">{{ _("The analysis did not finish") }}</h2>
     <p>{{ p.error or (last.error if last else 'Unknown error.') }}</p>
     <div class="row">
-      <button class="btn primary" data-post="/api/p/{{ p.run_id }}/retry" data-then="reload">Try again</button>
-      <a class="btn" href="{{ url_for('main.new_project') }}">Start a new project</a>
-      <button class="btn danger" data-post="/api/p/{{ p.run_id }}/project" data-body='{"deleted": 1}' data-confirm="Move this project to the trash?" data-then="go:{{ url_for('main.projects') }}">Delete</button>
+      <button class="btn primary" data-post="/api/p/{{ p.run_id }}/retry" data-then="reload">{{ _("Try again") }}</button>
+      <a class="btn" href="{{ url_for('main.new_project') }}">{{ _("Start a new project") }}</a>
+      <button class="btn danger" data-post="/api/p/{{ p.run_id }}/project" data-body='{"deleted": 1}' data-confirm="{{ _('Move this project to the trash?') }}" data-then="go:{{ url_for('main.projects') }}">{{ _("Delete") }}</button>
     </div>
   </div>
 {% else %}
@@ -24,8 +24,8 @@
       <span class="jb-msg muted small">{{ job.message if job else 'Starting …' }}</span>
       <div class="bar"><i style="width:{{ ((job.progress if job else 0) * 100)|round|int }}%"></i></div>
     </div>
-    <p class="muted">You can leave this page — the analysis carries on, and the project opens at the right step when it is done. A large project with drawings can take several minutes.</p>
-    <a class="btn" href="{{ url_for('main.projects') }}">Back to projects</a>
+    <p class="muted">{{ _("You can leave this page — the analysis carries on, and the project opens at the right step when it is done. A large project with drawings can take several minutes.") }}</p>
+    <a class="btn" href="{{ url_for('main.projects') }}">{{ _("Back to projects") }}</a>
   </div>
 {% endif %}
 {% endblock %}

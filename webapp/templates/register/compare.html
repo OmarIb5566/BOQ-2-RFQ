@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Bid comparison") }} · {{ cmp.wp.name_en }}{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="{{ url_for('register_views.register', run=p.run_id) }}">{{ _("RFQ register") }}</a> › {{ p.name }} › {{ cmp.wp.wp_id }}</div>
+<div class="row between">
+  <h1>{{ _("Bid comparison") }} — {{ cmp.wp.wp_id }} {{ cmp.wp.name_en }}</h1>
+  {% if cmp.bidders %}<a class="btn primary" href="?format=xlsx">⬇ {{ _("Comparison workbook (Excel)") }}</a>{% endif %}
+</div>
+{% if not cmp.bidders %}
+<div class="card empty"><h2>{{ _("No quotes yet") }}</h2><p>{{ _("Record each supplier's quote on its RFQ (best: the returned pricing sheet) and the comparison builds itself.") }}</p></div>
+{% else %}
+<div class="card table-wrap" style="margin-bottom:1rem">
+<table class="t">
+  <thead><tr><th>{{ _("Supplier") }}</th><th class="right">{{ _("Quoted amount") }}</th><th class="right">{{ _("vs. lowest") }}</th><th class="right">{{ _("Items without a rate") }}</th><th>{{ _("Status") }}</th></tr></thead>
+  <tbody>{% for x in cmp.sums %}
+    <tr class="{{ 'diff-new' if x.lowest }}"><td><a href="{{ url_for('register_views.rfq_page', rfq_id=x.rfq.id) }}">{{ x.rfq.supplier or x.rfq.number }}</a></td>
+      <td class="right"><b>{{ '{:,.2f}'.format(x.amount) if x.amount is not none else '—' }}</b></td>
+      <td class="right">{{ _('lowest') if x.lowest else ('+' ~ x.vs_lowest ~ '%' if x.vs_lowest is not none else '') }}</td>
+      <td class="right {{ 'overdue' if x.missing }}">{{ x.missing }}</td><td><span class="tag status-{{ x.rfq.status }}">{{ x.rfq.status }}</span></td></tr>
+  {% endfor %}</tbody>
+</table>
+</div>
+<div class="card table-wrap scroll-y">
+<table class="t">
+  <thead><tr><th>{{ _("Item") }}</th><th>{{ _("Description") }}</th><th>{{ _("Unit") }}</th><th class="right">{{ _("Qty") }}</th>
+    {% for b in cmp.bidders %}<th class="right" dir="auto">{{ b.supplier or b.number }}</th>{% endfor %}</tr></thead>
+  <tbody>{% for row in cmp.rows %}
+  <tr><td class="small nowrap">{{ row.item.item_no }}</td><td class="small" dir="auto">{{ row.item.full_description[:160] }}</td><td class="small">{{ row.item.unit }}</td><td class="right small">{{ row.item.quantity }}</td>
+    {% for c in row.cells %}<td class="right small {{ 'diff-new' if c.lowest }}">{% if c.rate is not none %}{{ '{:,.2f}'.format(c.rate) }}<div class="faint">{{ '{:,.0f}'.format(c.total) if c.total is not none else '' }}</div>{% else %}<span class="faint">—</span>{% endif %}</td>{% endfor %}</tr>
+  {% endfor %}</tbody>
+</table>
+</div>
+<p class="muted small">{{ _("Green: the lowest price for that item / overall. Rates come from the pricing sheets the suppliers returned.") }}</p>
+{% endif %}
+{% endblock %}

@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import settings_file  # noqa: F401  (boq2rfq.toml -> environment, before the defaults below are read)
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 

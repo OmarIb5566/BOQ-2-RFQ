@@ -2,40 +2,40 @@
 {% block title %}New project · BOQ → RFQ{% endblock %}
 {% block pageclass %}narrow{% endblock %}
 {% block content %}
-<div class="crumbs"><a href="{{ url_for('main.projects') }}">Projects</a> › New project</div>
-<h1>New project</h1>
-<p class="muted">Upload the project's BOQs. Add the specifications and drawings too if you have them — each work package then gets its own spec sections and drawing sheets. BOQ only, BOQ + specs, BOQ + drawings, or all three: each file is sorted automatically and you can correct it later.</p>
+<div class="crumbs"><a href="{{ url_for('main.projects') }}">{{ _("Projects") }}</a> {{ _("› New project") }}</div>
+<h1>{{ _("New project") }}</h1>
+<p class="muted">{{ _("Upload the project's BOQs. Add the specifications and drawings too if you have them — each work package then gets its own spec sections and drawing sheets. BOQ only, BOQ + specs, BOQ + drawings, or all three: each file is sorted automatically and you can correct it later.") }}</p>
 
 <form id="upload-form" method="post" enctype="multipart/form-data" class="stack">
   <input type="hidden" name="_csrf" value="{{ csrf_token }}">
   <div class="drop" id="drop">
     <div class="big">⇪</div>
-    <h3>Drop files here, or click to choose</h3>
-    <div class="muted small">Excel / PDF BOQs (Arabic or English) · PDF specifications · PDF or scanned drawings · a .zip with everything</div>
+    <h3>{{ _("Drop files here, or click to choose") }}</h3>
+    <div class="muted small">{{ _("Excel / PDF BOQs (Arabic or English) · PDF specifications · PDF or scanned drawings · a .zip with everything") }}</div>
     <input type="file" id="files" name="files" multiple hidden accept="{{ exts|join(',') }}">
   </div>
   <div class="file-list" id="file-list"></div>
 
   <div class="card pad">
-    <label class="field"><span>Project name</span><input type="text" id="name" name="name" placeholder="Taken from the first file if left empty"></label>
+    <label class="field"><span>{{ _("Project name") }}</span><input type="text" id="name" name="name" placeholder="{{ _('Taken from the first file if left empty') }}"></label>
     <div class="row" style="gap:1.5rem">
-      <label class="check"><input type="checkbox" name="use_ai" checked> Use the AI engine <span class="muted small">(recommended — without it, keyword matching only)</span></label>
-      <label class="check"><input type="checkbox" name="shared" checked> Share with the team</label>
+      <label class="check"><input type="checkbox" name="use_ai" checked> {{ _("Use the AI engine") }} <span class="muted small">{{ _("(recommended — without it, keyword matching only)") }}</span></label>
+      <label class="check"><input type="checkbox" name="shared" checked> {{ _("Share with the team") }}</label>
     </div>
   </div>
   <div class="row between">
-    <span class="muted small">Analysis runs in the background — you can leave this page; the project appears in your list with its progress.</span>
-    <button class="btn primary lg" id="go" disabled>Upload &amp; analyse</button>
+    <span class="muted small">{{ _("Analysis runs in the background — you can leave this page; the project appears in your list with its progress.") }}</span>
+    <button class="btn primary lg" id="go" disabled>{{ _("Upload & analyse") }}</button>
   </div>
 </form>
 
 <div class="card pad" style="margin-top:1.5rem">
-  <h3>What happens next</h3>
+  <h3>{{ _("What happens next") }}</h3>
   <ol class="muted" style="margin:.4rem 0 0 1.1rem; padding:0">
-    <li>The BOQ is read and cut into work packages following the company flowchart.</li>
-    <li>Specifications are split by their section numbers; drawings are read sheet by sheet.</li>
-    <li>You decide the special cases (marble with masonry? one package for several BOQs? …).</li>
-    <li>Export one PDF set per package, then draft the RFQ letters from the company template.</li>
+    <li>{{ _("The BOQ is read and cut into work packages following the company flowchart.") }}</li>
+    <li>{{ _("Specifications are split by their section numbers; drawings are read sheet by sheet.") }}</li>
+    <li>{{ _("You decide the special cases (marble with masonry? one package for several BOQs? …).") }}</li>
+    <li>{{ _("Export one PDF set per package, then draft the RFQ letters from the company template.") }}</li>
   </ol>
 </div>
 {% endblock %}

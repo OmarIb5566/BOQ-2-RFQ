@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ lang }}" dir="{{ dir }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -15,38 +15,61 @@
 <header class="topbar">
   <a class="logo" href="{{ url_for('main.projects') }}"><img class="brand-logo light" src="{{ url_for('static', filename='brand/rowad-logo.png') }}" alt="Rowad Modern Engineering"><img class="brand-logo dark" src="{{ url_for('static', filename='brand/rowad-logo-dark.png') }}" alt="Rowad Modern Engineering"><span class="product">BOQ → RFQ</span></a>
   <nav class="nav">
-    <a href="{{ url_for('main.projects') }}" class="{{ 'on' if request.endpoint == 'main.projects' }}">Projects</a>
-    <a href="{{ url_for('main.new_project') }}" class="{{ 'on' if request.endpoint == 'main.new_project' }}">New project</a>
-    {% if me.role == 'admin' %}<a href="{{ url_for('auth.users') }}" class="{{ 'on' if request.endpoint == 'auth.users' }}">Users</a>{% endif %}
+    <a href="{{ url_for('main.projects') }}" class="{{ 'on' if request.endpoint == 'main.projects' }}">{{ _("Projects") }}</a>
+    {% if me.role != 'viewer' %}<a href="{{ url_for('main.new_project') }}" class="{{ 'on' if request.endpoint == 'main.new_project' }}">{{ _("New project") }}</a>{% endif %}
+    <a href="{{ url_for('register_views.register') }}" class="{{ 'on' if request.endpoint and request.endpoint.startswith('register_views') }}">{{ _("RFQ register") }}</a>
+    <a href="{{ url_for('collab_views.search') }}" class="{{ 'on' if request.endpoint == 'collab_views.search' }}">{{ _("Search") }}</a>
+    {% if me.role in ('admin', 'manager') %}<a href="{{ url_for('admin.home') }}" class="{{ 'on' if request.endpoint and (request.endpoint.startswith('admin') or request.endpoint.startswith('fleet_views') or request.endpoint == 'auth.users') }}">{{ _("Admin") }}</a>{% endif %}
   </nav>
   <div class="spacer"></div>
-  <span class="engine" id="engine" title="Checking the AI engine …"><span class="dot"></span><span class="lbl">Checking AI …</span></span>
+  <span class="engine" id="engine" title="{{ _('Checking the AI engine …') }}"><span class="dot"></span><span class="lbl">{{ _("Checking AI …") }}</span></span>
   <details class="menu queue-btn">
-    <summary class="btn ghost sm" title="Background jobs">Jobs <span id="queue-n" class="badge-n hidden">0</span></summary>
-    <div class="pop" id="queue-list"><div class="muted small" style="padding:.5rem .7rem">No jobs running.</div></div>
+    <summary class="btn ghost sm" title="{{ _('Background jobs') }}">{{ _("Jobs") }} <span id="queue-n" class="badge-n hidden">0</span></summary>
+    <div class="pop" id="queue-list"><div class="muted small" style="padding:.5rem .7rem">{{ _("No jobs running.") }}</div></div>
+  </details>
+  <details class="menu bell-menu" id="bell">
+    <summary class="btn ghost sm" title="{{ _('Notifications') }}" aria-label="{{ _('Notifications') }}">🔔 <span id="bell-n" class="badge-n hidden">0</span></summary>
+    <div class="pop wide">
+      <div class="row between" style="padding:.3rem .5rem"><b>{{ _("Notifications") }}</b><button type="button" class="btn ghost sm" id="bell-all">{{ _("Mark all read") }}</button></div>
+      <div id="bell-list"><div class="muted small" style="padding:.5rem .7rem">{{ _("Nothing new.") }}</div></div>
+    </div>
   </details>
   <details class="menu">
     <summary><span class="avatar" title="{{ me.full_name }}">{{ (me.full_name or me.username)[:1]|upper }}</span></summary>
     <div class="pop">
-      <div style="padding:.4rem .7rem"><b>{{ me.full_name }}</b><br><span class="muted small">{{ me.username }} · {{ me.role }}</span></div>
+      <div style="padding:.4rem .7rem"><b>{{ me.full_name }}</b><br><span class="muted small">{{ me.username }} · {{ _(role_names.get(me.role, me.role)) }}</span></div>
       <hr>
-      <a href="{{ url_for('auth.account') }}">Account &amp; password</a>
-      <button id="theme-toggle" type="button">Switch light / dark</button>
+      <a href="{{ url_for('auth.account') }}">{{ _("Account & password") }}</a>
+      <button id="theme-toggle" type="button">{{ _("Switch light / dark") }}</button>
+      {% for code, l in LANGS.items() if code != lang %}
+      <form method="post" action="{{ url_for('i18n.set_lang', code=code) }}"><input type="hidden" name="_csrf" value="{{ csrf_token }}"><input type="hidden" name="next" value="{{ request.full_path }}"><button type="submit">🌐 {{ l.name }}</button></form>
+      {% endfor %}
+      <a href="{{ url_for('help_views.help_page') }}">{{ _("Help") }}</a>
+      <a href="{{ url_for('help_views.whats_new') }}">{{ _("What's new") }}</a>
       <hr>
-      <form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="_csrf" value="{{ csrf_token }}"><button type="submit">Sign out</button></form>
+      <form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="_csrf" value="{{ csrf_token }}"><button type="submit">{{ _("Sign out") }}</button></form>
     </div>
   </details>
 </header>
 {% endif %}
 {% block body %}
 <main class="page {% block pageclass %}{% endblock %}">
+  {% if me and show_whats_new %}<div class="banner info no-print">✨ {{ _("The app was updated.") }} <a href="{{ url_for('help_views.whats_new') }}">{{ _("See what's new") }}</a></div>{% endif %}
   {% with msgs = get_flashed_messages(with_categories=true) %}
-    {% for cat, m in msgs %}<div class="banner flash {{ 'bad' if cat == 'error' else 'ok' }}">{{ m }}</div>{% endfor %}
+    {% for cat, m in msgs %}<div class="banner flash {{ 'bad' if cat == 'error' else 'ok' }}">{{ _(m) }}</div>{% endfor %}
   {% endwith %}
   {% block content %}{% endblock %}
 </main>
 {% endblock %}
+{% if me and show_tour %}
+<div class="card pad tour no-print" id="tour">
+  <h3>👋 {{ _("Welcome to BOQ → RFQ") }}</h3>
+  <ol class="small" style="padding-inline-start:1.1rem; margin:.4rem 0 .8rem">{% for t, d in tour_steps %}<li><b>{{ _(t) }}</b> — {{ _(d) }}</li>{% endfor %}</ol>
+  <div class="row between"><a class="small" href="{{ url_for('help_views.help_page') }}">{{ _("More help") }}</a><button type="button" class="btn sm primary" data-tour-done>{{ _("Got it") }}</button></div>
+</div>
+{% endif %}
 <div class="toasts" id="toasts"></div>
+<script type="application/json" id="i18n">{{ js_i18n|tojson }}</script>
 <script src="{{ url_for('static', filename='app.js') }}?v=3"></script>
 {% block scripts %}{% endblock %}
 </body>

@@ -1,0 +1,29 @@
+{% extends "admin/layout.html" %}
+{% block admin %}
+<form class="row" method="get" style="margin-bottom:.8rem">
+  <input type="text" name="action" value="{{ args.get('action', '') }}" placeholder="{{ _('Action') }}" class="sm">
+  <input type="text" name="user" value="{{ args.get('user', '') }}" placeholder="{{ _('User') }}" class="sm">
+  <input type="text" name="run_id" value="{{ args.get('run_id', '') }}" placeholder="{{ _('Project id') }}" class="sm">
+  <button class="btn sm">{{ _("Filter") }}</button>
+</form>
+<div class="card table-wrap scroll-y">
+<table class="t">
+  <thead><tr><th>{{ _("When") }}</th><th>{{ _("Who") }}</th><th>{{ _("Action") }}</th><th>{{ _("Project") }}</th><th>{{ _("Details") }}</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td class="small nowrap" title="{{ r.ts }}">{{ r.ts|ago }}</td>
+    <td class="small">{{ r.full_name or r.detail.get('username') or '—' }}{% if r.ip %}<div class="faint">{{ r.ip }}</div>{% endif %}</td>
+    <td><b>{{ r.action }}</b></td>
+    <td class="small">{% if r.run_id %}<a href="{{ url_for('main.project', run_id=r.run_id) }}">{{ r.run_id }}</a>{% endif %}</td>
+    <td class="small muted" style="max-width:420px; overflow-wrap:anywhere">{{ r.detail|tojson if r.detail else '' }}</td>
+  </tr>
+  {% else %}<tr><td colspan="5" class="muted">{{ _("Nothing recorded yet.") }}</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+<div class="row" style="margin-top:.6rem">
+  {% if page > 0 %}<a class="btn sm" href="?{{ args|urlencode }}&page={{ page - 1 }}">← {{ _("Newer") }}</a>{% endif %}
+  {% if more %}<a class="btn sm" href="?{{ args|urlencode }}&page={{ page + 1 }}">{{ _("Older") }} →</a>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,25 @@
+# /etc/systemd/system/boq2rfq-worker.service — runs the analysis / export / RFQ jobs
+[Unit]
+Description=BOQ -> RFQ background worker
+After=network-online.target ollama.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=boq2rfq
+Group=boq2rfq
+WorkingDirectory=/opt/boq2rfq
+Environment=BOQ_CONFIG=/etc/boq2rfq/boq2rfq.toml
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/boq2rfq/.venv/bin/python worker.py
+Restart=always
+RestartSec=5
+# a job in progress is put back in the queue if the worker stops; give it time to finish its current step
+TimeoutStopSec=60
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

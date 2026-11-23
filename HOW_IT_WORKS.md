@@ -1,5 +1,9 @@
 # BOQ2RFQ — How the system works
 
+> **Multi-user server version (2.0)** — installation: [docs/INSTALL.md](docs/INSTALL.md) · administration:
+> [docs/ADMIN_MANUAL.md](docs/ADMIN_MANUAL.md) · moving / restoring data: [docs/MIGRATION_RUNBOOK.md](docs/MIGRATION_RUNBOOK.md)
+> · questions for IT: [docs/IT_QUESTIONS.md](docs/IT_QUESTIONS.md) · model benchmark: [docs/BENCHMARK.md](docs/BENCHMARK.md)
+
 BOQ2RFQ reads a Bill of Quantities (Excel or PDF, Arabic or English) and cuts it into **work packages (WPs)** following the company packaging flowchart. It asks the user to approve or deny every flowchart special case (the ovals). It then exports one PDF snapshot per work package, showing the original BOQ rows with **all columns**, plus a JSON hand-off file. Finally it drafts the **RFQ letters** for those packages from the company Word template (§6).
 
 **Specifications and drawings are optional.** Upload them with the BOQ (BOQ only, BOQ + specs, BOQ + drawings, or all three) and every work package also gets **its own spec sections and its own drawing sheets** (whole sheets), attached to its RFQ (§10).

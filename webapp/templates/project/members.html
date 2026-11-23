@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Members") }} · {{ p.name }}{% endblock %}
+{% block pageclass %}narrow{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="{{ url_for('main.projects') }}">{{ _("Projects") }}</a> › <a href="{{ url_for('main.project', run_id=p.run_id) }}">{{ p.name }}</a> › {{ _("Members") }}</div>
+<h1>{{ _("Who can work on this project") }}</h1>
+<p class="muted">{{ _("Owner") }}: <b>{{ p.owner_name or '—' }}</b> ·
+  {% if p.shared %}{{ _("Shared with the team: every engineer can edit it and every viewer can read it.") }}{% else %}{{ _("Private: only the owner, the members below, managers and administrators.") }}{% endif %}</p>
+
+<div class="card table-wrap" style="margin-bottom:1rem">
+<table class="t">
+  <thead><tr><th>{{ _("Member") }}</th><th>{{ _("On this project") }}</th><th>{{ _("Role in the app") }}</th><th></th></tr></thead>
+  <tbody>
+  {% for m in members %}
+  <tr><td><b>{{ m.full_name }}</b> <span class="faint small">{{ m.username }}</span></td>
+    <td><span class="tag">{{ _(m.role) }}</span></td><td class="small muted">{{ _(role_label.get(m.grole, m.grole)) }}</td>
+    <td class="right">{% if p.can_manage %}<form method="post"><input type="hidden" name="_csrf" value="{{ csrf_token }}"><input type="hidden" name="action" value="remove"><input type="hidden" name="user_id" value="{{ m.user_id }}"><button class="btn sm ghost">{{ _("Remove") }}</button></form>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="4" class="muted">{{ _("No members added — see the sharing setting above.") }}</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if p.can_manage %}
+<form method="post" class="card pad row">
+  <input type="hidden" name="_csrf" value="{{ csrf_token }}"><input type="hidden" name="action" value="add">
+  <select name="user_id" class="grow">{% for u in people %}<option value="{{ u.id }}">{{ u.full_name }} ({{ u.username }} · {{ _(role_label.get(u.role, u.role)) }})</option>{% endfor %}</select>
+  <select name="role"><option value="editor">{{ _("editor") }}</option><option value="viewer">{{ _("viewer") }}</option></select>
+  <button class="btn primary">{{ _("Add member") }}</button>
+</form>
+<form method="post" class="card pad row" style="margin-top:.8rem">
+  <input type="hidden" name="_csrf" value="{{ csrf_token }}"><input type="hidden" name="action" value="owner">
+  <span class="muted">{{ _("Hand the project over to") }}</span>
+  <select name="user_id" class="grow">{% for u in people if u.role != 'viewer' %}<option value="{{ u.id }}" {{ 'selected' if u.id == p.owner_id }}>{{ u.full_name }}</option>{% endfor %}</select>
+  <button class="btn">{{ _("Change owner") }}</button>
+</form>
+{% endif %}
+{% endblock %}

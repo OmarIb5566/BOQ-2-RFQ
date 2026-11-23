@@ -1,0 +1,31 @@
+{% extends "admin/layout.html" %}
+{% block admin %}
+<form class="row" method="get" style="margin-bottom:.8rem">
+  <label class="small muted">{{ _("Last") }} <select name="days" class="sm" data-autosubmit>{% for d in (7, 30, 90, 365) %}<option value="{{ d }}" {{ 'selected' if d == days }}>{{ d }} {{ _("days") }}</option>{% endfor %}</select></label>
+</form>
+<h3>{{ _("By user") }}</h3>
+<div class="card table-wrap" style="margin-bottom:1.2rem">
+<table class="t">
+  <thead><tr><th>{{ _("User") }}</th><th class="right">{{ _("Projects") }}</th><th class="right">{{ _("Analyses") }}</th><th class="right">{{ _("Jobs") }}</th><th class="right">{{ _("Job time") }}</th><th class="right">{{ _("AI time") }}</th></tr></thead>
+  <tbody>
+  {% for u in users %}
+  <tr><td>{{ u.full_name }} <span class="faint small">{{ u.username }}</span></td><td class="right">{{ u.projects }}</td><td class="right">{{ u.analyses }}</td><td class="right">{{ u.jobs }}</td>
+    <td class="right">{{ (u.job_s / 60)|round(1) }} min</td><td class="right">{{ (u.ai_s / 60)|round(1) }} min</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<h3>{{ _("By model") }}</h3>
+<div class="card table-wrap">
+<table class="t">
+  <thead><tr><th>{{ _("Role") }}</th><th>{{ _("Model") }}</th><th class="right">{{ _("Calls") }}</th><th class="right">{{ _("From cache") }}</th><th class="right">{{ _("Failed") }}</th><th class="right">{{ _("Time") }}</th><th class="right">{{ _("Tokens in / out") }}</th></tr></thead>
+  <tbody>
+  {% for m in by_model %}
+  <tr><td>{{ _(m.role|capitalize) }}</td><td><code>{{ m.model }}</code></td><td class="right">{{ m.calls }}</td><td class="right">{{ m.cached or 0 }}</td><td class="right">{{ m.failed or 0 }}</td>
+    <td class="right">{{ (m.s / 60)|round(1) }} min</td><td class="right small">{{ '{:,}'.format(m.tin) }} / {{ '{:,}'.format(m.tout) }}</td></tr>
+  {% else %}<tr><td colspan="7" class="muted">{{ _("No AI calls in this period.") }}</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="muted small">{{ _("The queue is fair: when several people wait, the next job is taken from the person who waited longest.") }}</p>
+{% endblock %}

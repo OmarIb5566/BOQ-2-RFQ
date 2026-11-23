@@ -1,0 +1,15 @@
+{% extends "admin/layout.html" %}
+{% block admin %}
+<p class="muted">{{ _("Settings file") }}: <code>{{ config_file }}</code>. {{ _("Environment variables win over the file. Changes to the file need a restart of the server and the worker.") }}</p>
+<div class="card table-wrap scroll-y">
+<table class="t">
+  <thead><tr><th>{{ _("Group") }}</th><th>{{ _("Setting") }}</th><th>{{ _("Value") }}</th><th>{{ _("Source") }}</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr><td class="small muted">{{ _(r.group) }}</td><td><code>{{ r.name }}</code></td><td class="small" style="overflow-wrap:anywhere">{{ r.value }}</td><td class="small muted">{{ r.source }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="faint small">{{ _("Generated") }} {{ generated }}</p>
+{% endblock %}

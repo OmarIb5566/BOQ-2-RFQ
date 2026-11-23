@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Search") }} · BOQ → RFQ{% endblock %}
+{% block content %}
+<h1>{{ _("Search all projects") }}</h1>
+<p class="muted">{{ _("Find how an item was packaged before — by its words, or by its meaning (finds the same work written differently, Arabic or English).") }}</p>
+<form method="get" class="row" style="margin-bottom:1rem">
+  <div class="search grow" style="max-width:560px"><input type="search" name="q" value="{{ q }}" placeholder="{{ _('e.g. porcelain skirting, عزل مائي للأسطح') }}" autofocus></div>
+  <div class="seg">
+    <label class="check"><input type="radio" name="mode" value="words" {{ 'checked' if mode == 'words' }}> {{ _("Words") }}</label>
+    <label class="check"><input type="radio" name="mode" value="meaning" {{ 'checked' if mode == 'meaning' }}> {{ _("Meaning") }}</label>
+  </div>
+  <button class="btn primary">{{ _("Search") }}</button>
+</form>
+{% if note %}<div class="banner info">{{ _(note) }}</div>{% endif %}
+{% if q %}
+<div class="card table-wrap">
+<table class="t">
+  <thead><tr><th>{{ _("Item") }}</th><th>{{ _("Description") }}</th><th>{{ _("Work package") }}</th><th>{{ _("Project") }}</th>{% if mode == 'meaning' %}<th class="right">{{ _("Match") }}</th>{% endif %}</tr></thead>
+  <tbody>
+  {% for r in results %}
+  <tr data-href="{{ url_for('main.package', run_id=r.run_id, key=r.wp_key) if r.wp_key else url_for('main.project', run_id=r.run_id) }}">
+    <td class="nowrap small">{{ r.item_no }}</td>
+    <td class="small" dir="auto">{{ r.text[:260] }}</td>
+    <td class="small">{{ r.package }}</td>
+    <td class="small"><a href="{{ url_for('main.project', run_id=r.run_id) }}">{{ r.project }}</a></td>
+    {% if mode == 'meaning' %}<td class="right small">{{ (r.score * 100)|round|int }}%</td>{% endif %}
+  </tr>
+  {% else %}<tr><td colspan="5" class="muted">{{ _("Nothing found.") }}</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

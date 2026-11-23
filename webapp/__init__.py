@@ -1,12 +1,14 @@
 """BOQ → RFQ web application (Flask).
 
-    create_app()  ->  Flask app with: accounts (auth.py), projects & actions (views.py),
-                      a project store with per-project locks (store.py) and one background job queue (jobs.py).
-Run it with  server.py  (Waitress, multi-threaded) — see run_app.bat.
+    create_app()  ->  Flask app: accounts (auth.py), projects & actions (views.py), the admin console (admin.py),
+                      collaboration (collab_views.py), the RFQ register (register_views.py) …  — see BLUEPRINTS.
+The settings, database, project store and job queue come from runtime.py and are shared with worker.py.
+Run it with  server.py  (Waitress, multi-threaded).
 """
 from __future__ import annotations
 
 import datetime as dt
+import importlib
 import os
 import secrets
 from pathlib import Path
@@ -16,16 +18,17 @@ from flask import Flask, render_template
 from boq_agent.config import Settings
 
 from . import security
-from .db import DB
-from .jobs import Jobs
-from .store import Store
+from .runtime import build_runtime, worker_mode
+
+# Screens and APIs, one module each (a new feature adds a module here instead of growing views.py).
+BLUEPRINTS = ["auth", "views", "admin", "collab_views", "register_views", "revisions_views", "fleet_views",
+              "help_views"]
 
 
-def create_app(settings: Settings | None = None) -> Flask:
-    settings = settings or Settings()
-    settings.ensure_dirs()
-    app = Flask(__name__, instance_path=str(Path(settings.workspace).resolve().parent / "instance"))
-    os.makedirs(app.instance_path, exist_ok=True)
+def create_app(settings: Settings | None = None, start_worker: bool | None = None) -> Flask:
+    rt = build_runtime(settings)
+    settings = rt.settings
+    app = Flask(__name__, instance_path=str(rt.instance_path))
 
     key_file = Path(app.instance_path) / "secret.key"
     if not key_file.exists():
@@ -39,14 +42,21 @@ def create_app(settings: Settings | None = None) -> Flask:
     )
     security.configure(app)
     app.config["PERMANENT_SESSION_LIFETIME"] = dt.timedelta(seconds=app.config["REMEMBER_SECONDS"])
-    db = DB(Path(app.instance_path) / "boq2rfq.db")
-    store = Store(settings, db)
-    app.config.update(SETTINGS=settings, DB=db, STORE=store)
-    app.config["JOBS"] = Jobs(db, app)
+    db, store = rt.db, rt.store
+    app.config.update(SETTINGS=settings, DB=db, STORE=store, JOBS=rt.jobs, RUNTIME=rt, WORKER_MODE=worker_mode())
 
-    from . import auth, views
-    app.register_blueprint(auth.bp)
-    app.register_blueprint(views.bp)
+    from . import i18n
+    i18n.init_app(app)
+    for name in BLUEPRINTS:
+        mod = importlib.import_module(f".{name}", __name__)
+        app.register_blueprint(mod.bp)
+
+    if start_worker is None:
+        start_worker = worker_mode() == "inline"
+    if start_worker:
+        rt.jobs.start_worker(rt)
+
+    views = importlib.import_module(".views", __name__)
 
     def import_runs(owner_id: int) -> int:
         with app.test_request_context():

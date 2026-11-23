@@ -1,0 +1,2 @@
+# Only when needed:
+ldap3>=2.9          # sign-in with the company directory (BOQ_AUTH = ldap / ldap+local)

@@ -1,19 +1,19 @@
 {% extends "project/layout.html" %}
 {% block tab %}
 <div class="row between" style="margin-bottom:.75rem">
-  <div class="search" style="width:340px"><input type="search" data-filter="#wp-table" placeholder="Filter packages …  (press /)"></div>
-  <span class="muted small">Click a package to see its items and documents, or to rename it. <span data-count="#wp-table">{{ wps|length }}</span> shown.</span>
+  <div class="search" style="width:340px"><input type="search" data-filter="#wp-table" placeholder="{{ _('Filter packages …  (press /)') }}"></div>
+  <span class="muted small">{{ _("Click a package to see its items and documents, or to rename it.") }} <span data-count="#wp-table">{{ wps|length }}</span> {{ _("shown.") }}</span>
 </div>
 <div class="card table-wrap">
 <table class="t" id="wp-table">
-  <thead><tr><th>WP</th><th>Work package</th>{% if multi %}<th>From BOQ</th>{% endif %}<th class="right">Items</th>
-    {% if has_docs %}<th class="right">Spec sections</th><th class="right">Sheets</th>{% endif %}<th>Notes</th></tr></thead>
+  <thead><tr><th>WP</th><th>{{ _("Work package") }}</th>{% if multi %}<th>{{ _("From BOQ") }}</th>{% endif %}<th class="right">{{ _("Items") }}</th>
+    {% if has_docs %}<th class="right">{{ _("Spec sections") }}</th><th class="right">{{ _("Sheets") }}</th>{% endif %}<th>{{ _("Notes") }}</th></tr></thead>
   <tbody>
   {% for r in wps %}{% set wp = r.wp %}
     <tr class="click" data-href="{{ url_for('main.package', run_id=p.run_id, key=wp.key) }}">
       <td class="nowrap"><b>{{ wp.wp_id }}</b></td>
       <td><a href="{{ url_for('main.package', run_id=p.run_id, key=wp.key) }}"><b>{{ wp.name_en }}</b></a>
-        {% if r.renamed %}<span class="tag" title="Renamed by a user">renamed</span>{% endif %}
+        {% if r.renamed %}<span class="tag" title="{{ _('Renamed by a user') }}">{{ _("renamed") }}</span>{% endif %}
         {% if wp.name_ar %}<div class="rtl muted small">{{ wp.name_ar }}</div>{% endif %}</td>
       {% if multi %}<td class="small muted">{{ r.boqs }}</td>{% endif %}
       <td class="right">{{ wp.item_uids|length }}</td>

@@ -1,0 +1,65 @@
+{
+  "items": 11,
+  "work_packages": {
+    "DIV03": {
+      "name": "Div 03: Concrete",
+      "items": [
+        "3.1",
+        "3.2"
+      ]
+    },
+    "DIV04": {
+      "name": "Div 04: Masonry",
+      "items": [
+        "4.1",
+        "9.4"
+      ]
+    },
+    "WOOD_DOORS": {
+      "name": "Wooden Doors Only",
+      "items": [
+        "8.1"
+      ]
+    },
+    "ALUMINIUM_DOORS_WINDOWS": {
+      "name": "Aluminium Doors and Windows",
+      "items": [
+        "8.2"
+      ]
+    },
+    "PLASTER": {
+      "name": "Plaster",
+      "items": [
+        "9.1"
+      ]
+    },
+    "ACRYLIC_PAINT": {
+      "name": "Acrylic Paint",
+      "items": [
+        "9.2"
+      ]
+    },
+    "CERAMIC_PORCELAIN": {
+      "name": "Ceramic and/or Porcelain Tiles (incl. skirting)",
+      "items": [
+        "9.3"
+      ]
+    },
+    "DIV07": {
+      "name": "Div 07: Thermal & Moisture Protection (Insulation)",
+      "items": [
+        "7.1"
+      ]
+    },
+    "ROOF_TILES": {
+      "name": "Roof Tiles",
+      "items": [
+        "7.2"
+      ]
+    }
+  },
+  "proposals": [
+    "R1_EXTERNAL_MARBLE|DIV04|EXTERNAL_MARBLE",
+    "R2_ROOF_TILES|ROOF_TILES|DIV07"
+  ]
+}

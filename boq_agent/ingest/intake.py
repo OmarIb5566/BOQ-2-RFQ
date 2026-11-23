@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Callable, Optional
 
+from .sniff import HEAD_BYTES, check_file, check_head
+
 EXCEL_EXT = {".xlsx", ".xlsm", ".xls", ".xlsb"}
 PDF_EXT = {".pdf"}
 IMG_EXT = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
@@ -25,6 +27,11 @@ MAX_UNZIPPED = 2 * 1024 ** 3        # 2 GB
 class Candidate:
     path: Path        # local file to read
     name: str         # display name ("Project.zip/Structural/BOQ.xlsx")
+
+
+def _head(path: Path) -> bytes:
+    with open(path, "rb") as f:
+        return f.read(HEAD_BYTES)
 
 
 def _ignored(parts: tuple[str, ...]) -> bool:
@@ -60,6 +67,11 @@ def _unzip(zpath: Path, display: str, dest: Path, log: Callable[[str], None]) ->
             with z.open(info) as src, open(target, "wb") as dst:
                 while chunk := src.read(1 << 20):
                     dst.write(chunk)
+            err = check_file(target, f"{display}/{name}")
+            if err:
+                log(f"Skipped — {err}")
+                target.unlink(missing_ok=True)
+                continue
             out.append(Candidate(target, f"{display}/{name}"))
     return out
 
@@ -70,8 +82,19 @@ def collect(uploads: list[tuple[Path, str]], dest: Path, log: Callable[[str], No
     for i, (path, name) in enumerate(uploads, 1):
         ext = Path(name).suffix.lower()
         if ext == ".zip":
-            out += _unzip(path, Path(name).name, dest / f"zip{i}", log)
+            err = check_head(_head(path), Path(name).name)
+            if err:
+                log(f"Skipped — {err}")
+                continue
+            try:
+                out += _unzip(path, Path(name).name, dest / f"zip{i}", log)
+            except zipfile.BadZipFile as e:
+                log(f"Skipped — {Path(name).name}: damaged zip ({e})")
         elif ext in UPLOAD_EXT and not _ignored((Path(name).name,)):
+            err = check_file(path, Path(name).name)
+            if err:
+                log(f"Skipped — {err}")
+                continue
             out.append(Candidate(path, Path(name).name))
         else:
             log(f"Ignored (not an Excel / PDF / image file): {name}")

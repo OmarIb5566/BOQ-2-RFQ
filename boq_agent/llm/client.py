@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 from typing import Optional
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 
@@ -15,11 +17,30 @@ class LLMError(RuntimeError):
 
 _STATUS: dict[tuple[str, str], tuple[float, tuple[bool, str]]] = {}
 _STATUS_TTL = 30.0      # s — the UI asks on every edit; Ollama's model list rarely changes
+_http = threading.local()
+
+
+def _session() -> requests.Session:
+    """One keep-alive HTTP session per thread (a new TCP connection per call costs time on every request)."""
+    s = getattr(_http, "s", None)
+    if s is None:
+        s = _http.s = requests.Session()
+    return s
+
+
+def normalize_url(url: str) -> str:
+    """'localhost' -> '127.0.0.1'. On Windows 'localhost' tries IPv6 first; Ollama listens on IPv4 only, so
+    every new connection waited ~2 s for the fallback (measured: 2.1 s vs 0.08 s per call)."""
+    parts = urlsplit(url.rstrip("/"))
+    if parts.hostname == "localhost":
+        netloc = "127.0.0.1" + (f":{parts.port}" if parts.port else "")
+        parts = parts._replace(netloc=netloc)
+    return urlunsplit(parts)
 
 
 class OllamaClient:
     def __init__(self, url: str, model: str, temperature: float = 0.0, num_ctx: int = 16384, timeout: int = 900):
-        self.url = url.rstrip("/")
+        self.url = normalize_url(url)
         self.model = model
         self.temperature = temperature
         self.num_ctx = num_ctx
@@ -38,7 +59,7 @@ class OllamaClient:
 
     def _status(self) -> tuple[bool, str]:
         try:
-            r = requests.get(f"{self.url}/api/tags", timeout=5)
+            r = _session().get(f"{self.url}/api/tags", timeout=5)
             r.raise_for_status()
         except Exception as e:  # noqa: BLE001
             return False, f"Ollama not reachable at {self.url}: {e}"
@@ -67,7 +88,7 @@ class OllamaClient:
         for attempt in range(retries + 1):
             t0 = time.time()
             try:
-                r = requests.post(f"{self.url}/api/chat", json=payload, timeout=self.timeout)
+                r = _session().post(f"{self.url}/api/chat", json=payload, timeout=self.timeout)
                 r.raise_for_status()
                 js = r.json()
                 content = js["message"]["content"]

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Set-up · BOQ → RFQ{% endblock %}
+{% block body %}
+<div class="auth">
+  <div class="card">
+    <div class="logo"><img class="brand-logo light" src="{{ url_for('static', filename='brand/rowad-logo.png') }}" alt="Rowad Modern Engineering"><img class="brand-logo dark" src="{{ url_for('static', filename='brand/rowad-logo-dark.png') }}" alt="Rowad Modern Engineering"><span class="product">BOQ → RFQ</span></div>
+    <h2>Set-up is locked</h2>
+    <p class="muted">No administrator account exists yet. To create it, open the <b>one-time set-up link</b> printed in the server window when the app started.</p>
+    <p class="muted small">The same code is also saved on the server in <code>instance/setup.token</code> — add it to this address as <code>/setup?token=…</code>.</p>
+  </div>
+</div>
+{% endblock %}

@@ -12,7 +12,7 @@ It runs fully locally. The reasoning model is **Gemma (`gemma4:e4b`) through Oll
 
 | How | Command |
 |---|---|
-| Web app, this PC | double-click `run_app.bat` (it creates `.venv` on the first run) → http://localhost:8080 |
+| Web app, this PC | double-click `run_app.bat` (it creates `.venv` on the first run) → http://127.0.0.1:8080 |
 | Web app for the team | double-click `run_for_team.bat` (= `server.py --lan`); colleagues open `http://<this PC>:8080` |
 | | `server.py --port 9000 --threads 16 --no-browser` |
 | Command line | `.venv\Scripts\python cli.py "BOQ.xlsx"` (asks Approve/Deny for each special case) |
@@ -30,7 +30,7 @@ It runs fully locally. The reasoning model is **Gemma (`gemma4:e4b`) through Oll
 
 | Setting | Default | Env var |
 |---|---|---|
-| Ollama URL | `http://localhost:11434` | `OLLAMA_URL` |
+| Ollama URL | `http://127.0.0.1:11434` (`localhost` is rewritten to `127.0.0.1`: on Windows it cost ~2 s per call) | `OLLAMA_URL` |
 | Model | `gemma4:e4b` | `BOQ_LLM_MODEL` |
 | Temperature / context | `0.0` / 16 384 tokens | — |
 | Items per LLM call | 10 | — (UI slider) |
@@ -39,6 +39,31 @@ It runs fully locally. The reasoning model is **Gemma (`gemma4:e4b`) through Oll
 | Excel renderer | `auto` (Excel if available, else HTML) | `BOQ_EXCEL_RENDERER` |
 | Tesseract folder | `C:\Program Files\Tesseract-OCR` | `TESSERACT_DIR` |
 | Vision model (scanned drawings only) | `qwen2.5vl:7b`, whole sheet at 1800 px, title-block crop at 1400 px, ≤ 900 output tokens | `BOQ_VISION_MODEL` |
+
+**First run.** No account exists yet, so the server prints a **one-time set-up link** (`…/setup?token=…`) in its
+window and opens it. Only that link can create the administrator; the token is also in `instance/setup.token` and is
+deleted once the administrator exists. Anyone else who opens `/setup` sees "Set-up is locked".
+
+**Security settings** (environment variables, read when the server starts):
+
+| Setting | Default | Env var |
+|---|---|---|
+| Sign out after inactivity | 60 minutes ("keep me signed in": 7 days) | `BOQ_IDLE_MINUTES`, `BOQ_REMEMBER_DAYS` |
+| Largest upload per request | 4096 MB | `BOQ_MAX_UPLOAD_MB` |
+| Largest PDF / image accepted | 3000 pages / 200 megapixels | `BOQ_MAX_PDF_PAGES`, `BOQ_MAX_IMAGE_MP` |
+| Served over HTTPS (Secure cookies, HSTS) | off | `BOQ_HTTPS=1` |
+| Behind one reverse proxy (trust X-Forwarded-*) | off | `BOQ_BEHIND_PROXY=1` |
+
+What the app enforces: CSRF token + same-origin check on every change; no CORS; a strict Content-Security-Policy
+(scripts only from `app.js`, nothing loaded from other sites); 5 wrong passwords per user name (20 per address) lock
+sign-in for 15 minutes; changing or resetting a password signs that user out everywhere; uploads are checked by
+content, not by name (a renamed `.exe` is refused), and PDFs / images are opened only in the background job;
+Excel runs with macros force-disabled; uploaded Word templates are parsed without DTDs/entities.
+
+**Tests** (a separate environment, so `.venv` is never touched):
+`.venv-dev\Scripts\python -m pytest` — runs in temporary folders only (never `workspace/` or `instance/`).
+`tests/golden/villa.json` pins the packaging result of a small sample BOQ; accept an intended change with
+`UPDATE_GOLDEN=1`.
 
 ---
 

@@ -35,8 +35,19 @@ def _paragraph_texts(root) -> list[list]:
     return out
 
 
+# Uploaded templates are untrusted: no DTDs / entities (XXE), no network, and a cap on the unpacked size.
+_PARSER = etree.XMLParser(resolve_entities=False, load_dtd=False, no_network=True, huge_tree=False)
+MAX_UNPACKED = 100 * 1024 ** 2
+
+
+def _xml(data: bytes):
+    return etree.fromstring(data, _PARSER)
+
+
 def _parts(path: Path) -> dict[str, bytes]:
     with zipfile.ZipFile(path) as z:
+        if sum(i.file_size for i in z.infolist()) > MAX_UNPACKED:
+            raise ValueError("The Word template is too large once unpacked (100 MB at most).")
         return {n: z.read(n) for n in z.namelist()}
 
 
@@ -46,7 +57,7 @@ def discover_fields(template: Path) -> list[str]:
     for name, data in _parts(Path(template)).items():
         if not _PART_RE.match(name):
             continue
-        for ts in _paragraph_texts(etree.fromstring(data)):
+        for ts in _paragraph_texts(_xml(data)):
             for m in FIELD_RE.finditer("".join(t.text or "" for t in ts)):
                 seen.setdefault(field_name(m.group(1) or m.group(2)), None)
     return list(seen)
@@ -56,7 +67,7 @@ def preview(template: Path, values: dict[str, str], drop_lines: tuple[str, ...] 
     """Body paragraphs as plain text with the values substituted (for the on-screen review)."""
     vals = {k.lower(): v for k, v in values.items() if v and str(v).strip()}
     drop = {_para_key(x) for x in drop_lines if x.strip()}
-    root = etree.fromstring(_parts(Path(template))["word/document.xml"])
+    root = _xml(_parts(Path(template))["word/document.xml"])
     out = []
     for p in root.iter(f"{W}p"):
         text = "".join(t.text or "" for t in p.iter(f"{W}t"))
@@ -126,7 +137,7 @@ def fill_template(template: Path, out: Path, values: dict[str, str], drop_lines:
     for name, data in list(parts.items()):
         if not _PART_RE.match(name):
             continue
-        root = etree.fromstring(data)
+        root = _xml(data)
         n = sum(_fill_paragraph(ts, vals) for ts in _paragraph_texts(root))
         if drop and name == "word/document.xml":
             n += _drop_paragraphs(root, drop)

@@ -1,6 +1,6 @@
 """Start the BOQ → RFQ web app.
 
-    .venv\\Scripts\\python server.py                 # http://localhost:8080 (this PC only)
+    .venv\\Scripts\\python server.py                 # http://127.0.0.1:8080 (this PC only)
     .venv\\Scripts\\python server.py --lan           # also reachable from the office network
     .venv\\Scripts\\python server.py --port 9000
 
@@ -17,7 +17,7 @@ import webbrowser
 
 from waitress import serve
 
-from webapp import create_app
+from webapp import create_app, setup_url
 
 
 def main() -> int:
@@ -32,7 +32,8 @@ def main() -> int:
 
     app = create_app()
     host = "0.0.0.0" if args.lan else "127.0.0.1"
-    url = f"http://localhost:{args.port}"
+    url = f"http://127.0.0.1:{args.port}"
+    first_run = setup_url(app, url)
     print("=" * 64)
     print("  BOQ -> RFQ  web app")
     print(f"  Open      : {url}")
@@ -43,10 +44,13 @@ def main() -> int:
         except OSError:
             pass
     print(f"  Workspace : {app.config['SETTINGS'].workspace}")
+    if first_run:
+        print("  FIRST RUN : create the administrator account here (one-time link):")
+        print(f"              {first_run}")
     print("  Close this window to stop the app.")
     print("=" * 64)
     if not args.no_browser:
-        threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+        threading.Timer(1.5, lambda: webbrowser.open(first_run or url)).start()
     serve(app, host=host, port=args.port, threads=args.threads, channel_timeout=600,
           max_request_body_size=4 * 1024 ** 3, ident="BOQ2RFQ")
     return 0

@@ -3,11 +3,11 @@
 {% block body %}
 <div class="auth">
   <div class="card">
-    <div class="logo"><span class="mark">RFQ</span> BOQ → RFQ</div>
+    <div class="logo"><img class="brand-logo light" src="{{ url_for('static', filename='brand/rowad-logo.png') }}" alt="Rowad Modern Engineering"><img class="brand-logo dark" src="{{ url_for('static', filename='brand/rowad-logo-dark.png') }}" alt="Rowad Modern Engineering"><span class="product">BOQ → RFQ</span></div>
     <h2>Create the administrator account</h2>
     <p class="muted">This is the first start. The administrator adds the other users and sees every project. Projects that already exist on this computer are imported into this account.</p>
     {% for cat, m in get_flashed_messages(with_categories=true) %}<div class="banner {{ 'bad' if cat == 'error' else 'ok' }}">{{ m }}</div>{% endfor %}
-    <form method="post">
+    <form method="post" action="{{ url_for('auth.setup') }}">
       <input type="hidden" name="_csrf" value="{{ csrf_token }}">
       <label class="field"><span>Your name</span><input type="text" name="full_name" required autofocus></label>
       <label class="field"><span>User name</span><input type="text" name="username" required autocomplete="username"></label>

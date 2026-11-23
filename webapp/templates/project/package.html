@@ -43,7 +43,7 @@
           <p class="muted">Nothing attached yet.</p>
         {% endfor %}
         {% if addable %}
-        <form class="row" style="margin-top:.8rem" onsubmit="event.preventDefault(); const v=this.ref.value; if(v) post('/api/p/{{ p.run_id }}/docs/link', {wp_key: {{ wp.key|tojson|forceescape }}, ref: v, on: true}).then(j => j.ok && refresh());">
+        <form class="row" style="margin-top:.8rem" data-post-form="/api/p/{{ p.run_id }}/docs/link" data-key="ref" data-body='{{ {"wp_key": wp.key, "on": true}|tojson }}'>
           <select name="ref" class="sm grow"><option value="">Add a spec section or sheet …</option>
             {% for uid, label in addable %}<option value="{{ uid }}">{{ label }}</option>{% endfor %}</select>
           <button class="btn sm">Add</button>

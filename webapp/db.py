@@ -51,7 +51,20 @@ CREATE TABLE IF NOT EXISTS jobs (
     error TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS jobs_run ON jobs(run_id);
+CREATE TABLE IF NOT EXISTS login_failures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL,
+    ip TEXT NOT NULL,
+    ts REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS login_failures_user ON login_failures(username, ts);
+CREATE INDEX IF NOT EXISTS login_failures_ip ON login_failures(ip, ts);
 """
+
+# columns added after the first release: (table, column, definition) — added to existing databases on start-up
+ADDED_COLUMNS = [
+    ("users", "ses_ver", "INTEGER NOT NULL DEFAULT 0"),     # bumped on password change -> other sessions end
+]
 
 
 def now() -> str:
@@ -65,6 +78,10 @@ class DB:
         self._local = threading.local()
         with self.conn() as c:
             c.executescript(SCHEMA)
+            for table, col, definition in ADDED_COLUMNS:
+                have = {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}
+                if col not in have:
+                    c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {definition}")
 
     def conn(self) -> sqlite3.Connection:
         c = getattr(self._local, "c", None)

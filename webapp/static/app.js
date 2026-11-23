@@ -6,6 +6,8 @@
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const CSRF = document.querySelector('meta[name="csrf"]')?.content || "";
   const RUN = document.body.dataset.run || "";
+  // the top bar (with the engine status) exists only for a signed-in user: no polling on sign-in / set-up pages
+  const SIGNED_IN = !!document.getElementById("engine");
 
   // ------------------------------------------------------------------ toasts
   function toast(msg, kind = "", ms = 4200) {
@@ -30,6 +32,7 @@
         method: "POST", headers: isForm ? { "X-CSRF": CSRF } : { "Content-Type": "application/json", "X-CSRF": CSRF },
         body: isForm ? data : JSON.stringify(data || {}),
       });
+      if (r.status === 401) return signedOut();
       let j = {};
       try { j = await r.json(); } catch { j = { ok: false, error: `Server error (${r.status}).` }; }
       if (!j.ok) { toast(j.error || "Something went wrong.", "bad", 7000); return j; }
@@ -44,6 +47,15 @@
     }
   }
   window.post = post;
+
+  // the session ended (idle time-out, password changed elsewhere): go to the sign-in page, then come back here
+  function signedOut() {
+    if (!SIGNED_IN || /^\/(login|setup)/.test(location.pathname)) return { ok: false };
+    location.href = "/login?next=" + encodeURIComponent(location.pathname + location.search);
+    return { ok: false };
+  }
+  // polling requests carry X-Background so they do not count as activity (otherwise an open tab never times out)
+  const BG = { headers: { "X-Background": "1" } };
 
   // refresh the project header + main area from the server, keeping scroll and open <details>
   async function refresh() {
@@ -184,8 +196,8 @@
   let watching = null, since = null;
   async function pollJobs() {
     try {
-      const r = await fetch("/api/jobs" + (since ? `?since=${encodeURIComponent(since)}` : ""));
-      if (r.status === 401) return;
+      const r = await fetch("/api/jobs" + (since ? `?since=${encodeURIComponent(since)}` : ""), BG);
+      if (r.status === 401) { signedOut(); return; }
       const j = await r.json();
       since = j.now;
       const n = j.active.length;
@@ -239,7 +251,9 @@
   // ------------------------------------------------------------------ engine status
   async function status() {
     try {
-      const j = await (await fetch("/api/status")).json();
+      const r = await fetch("/api/status", BG);
+      if (r.status === 401) return signedOut();
+      const j = await r.json();
       const el = $("#engine");
       if (!el || !j.ok) return;
       const d = $(".dot", el), l = $(".lbl", el);
@@ -385,6 +399,38 @@
   }
   window.showPreview = showPreview;
 
+  // ------------------------------------------------------------------ declarative controls (no inline handlers: the
+  // Content-Security-Policy only runs scripts from this file)
+  //   <select data-autosubmit>                                  submit its form on change
+  //   <select data-change-post="/api/…" data-key="k" data-body='{…}'>   POST {…body, k: value} on change
+  //   <form data-post-form="/api/…" data-key="field" data-body='{…}'>    POST {…body, field: value}, then refresh
+  //   <form data-nosubmit>  ·  <button data-preview-refresh>  ·  <a data-open="details-id">
+  document.addEventListener("change", async (e) => {
+    const el = e.target;
+    if (el.matches("[data-autosubmit]")) { el.form.submit(); return; }
+    if (el.matches("[data-change-post]")) {
+      const body = { ...(el.dataset.body ? JSON.parse(el.dataset.body) : {}), [el.dataset.key || "value"]: el.value };
+      const j = await post(el.dataset.changePost, body);
+      if (j.ok && el.dataset.then) after(el.dataset.then, j);
+    }
+  });
+  document.addEventListener("submit", async (e) => {
+    const f = e.target;
+    if (f.matches("[data-nosubmit]")) { e.preventDefault(); return; }
+    if (!f.matches("[data-post-form]")) return;
+    e.preventDefault();
+    const v = f.elements[f.dataset.key]?.value;
+    if (!v) return;
+    const j = await post(f.dataset.postForm, { ...(f.dataset.body ? JSON.parse(f.dataset.body) : {}), [f.dataset.key]: v },
+      $("button", f));
+    if (j.ok) refresh();
+  });
+  document.addEventListener("click", (e) => {
+    if (e.target.closest("[data-preview-refresh]")) { const pv = $("#preview-wp"); if (pv) showPreview(pv.value); }
+    const o = e.target.closest("[data-open]");
+    if (o) { const d = document.getElementById(o.dataset.open); if (d) d.open = true; }
+  });
+
   // ------------------------------------------------------------------ misc
   document.addEventListener("submit", async (e) => {    // <form data-ajax> -> multipart POST, then refresh
     const f = e.target;
@@ -417,8 +463,10 @@
   }
   init(document);
   initDrop();
-  status();
-  setInterval(status, 60000);
-  pollJobs();
-  if (document.body.dataset.alwaysPoll) watchJobs();
+  if (SIGNED_IN) {
+    status();
+    setInterval(status, 60000);
+    pollJobs();
+    if (document.body.dataset.alwaysPoll) watchJobs();
+  }
 })();

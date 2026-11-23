@@ -5,6 +5,8 @@ import contextlib
 import shutil
 from pathlib import Path
 
+MSO_AUTOMATION_SECURITY_FORCE_DISABLE = 3
+
 
 def excel_available() -> bool:
     try:
@@ -28,6 +30,9 @@ def excel_app():
     xl = None
     try:
         xl = win32com.client.DispatchEx("Excel.Application")
+        # Uploaded workbooks are untrusted: never run their macros. Excel opened by automation otherwise
+        # ENABLES macros (msoAutomationSecurityLow); this must be set before any workbook is opened.
+        xl.AutomationSecurity = MSO_AUTOMATION_SECURITY_FORCE_DISABLE
         xl.Visible = False
         xl.DisplayAlerts = False
         xl.ScreenUpdating = False

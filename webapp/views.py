@@ -19,6 +19,7 @@ from flask import (Blueprint, abort, current_app, flash, g, jsonify, redirect, r
 
 from boq_agent.config import Settings
 from boq_agent.ingest.intake import UPLOAD_EXT
+from boq_agent.ingest.sniff import HEAD_BYTES, check_head
 from boq_agent.knowledge.rules import MISC
 from boq_agent.text_utils import safe_filename, truncate
 
@@ -128,6 +129,10 @@ def new_project():
     if bad:
         flash("Not supported: " + ", ".join(bad), "error")
         return redirect(url_for("main.new_project"))
+    fakes = [e for e in (check_head(_peek(f), Path(f.filename).name) for f in files) if e]
+    if fakes:
+        flash("Not uploaded — " + "; ".join(fakes), "error")
+        return redirect(url_for("main.new_project"))
     name = request.form.get("name", "").strip() or Path(files[0].filename).stem + (
         f" +{len(files) - 1}" if len(files) > 1 else "")
     run_id = _new_run_id(name)
@@ -145,6 +150,13 @@ def new_project():
                              stage="analyzing", summary=f"{len(files)} file(s) uploaded", updated_by=g.user["id"])
     _submit_analysis(run_id)
     return redirect(url_for("main.project", run_id=run_id))
+
+
+def _peek(f) -> bytes:
+    """First bytes of an uploaded file without consuming it (pages / pixels are checked later, in the job)."""
+    head = f.stream.read(HEAD_BYTES)
+    f.stream.seek(0)
+    return head
 
 
 def _new_run_id(name: str) -> str:
@@ -695,10 +707,23 @@ def api_rfq_template(run_id):
             f = request.files.get("template")
             if not f or not f.filename.lower().endswith(".docx"):
                 raise ValueError("Choose a Word template (.docx).")
+            if check_head(_peek(f), "template.docx"):
+                raise ValueError("That file is not a real Word document (.docx).")
+            f.stream.seek(0, 2)
+            if f.stream.tell() > 20 * 1024 ** 2:
+                raise ValueError("The Word template is too large (20 MB at most).")
+            f.stream.seek(0)
             dst = store.run_dir(run_id) / "rfq_template.docx"
             f.save(dst)
             from boq_agent.rfq.template import discover_fields
-            n = len(discover_fields(dst))
+            try:
+                n = len(discover_fields(dst))
+            except ValueError:
+                dst.unlink(missing_ok=True)
+                raise
+            except Exception as e:  # noqa: BLE001  (damaged zip / XML)
+                dst.unlink(missing_ok=True)
+                raise ValueError(f"That Word document cannot be read ({type(e).__name__}).") from e
             s.rfq_draft["template"] = str(dst)
             msg = f"Template uploaded — {n} field(s) found."
         s.rfq_draft.pop("prefill", None)

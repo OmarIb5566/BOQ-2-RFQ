@@ -35,10 +35,11 @@ def free_port(start: int = 8080) -> int:
 
 
 def check_ollama() -> None:
-    url = os.getenv("OLLAMA_URL", "http://localhost:11434")
+    url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
     model = os.getenv("BOQ_LLM_MODEL", "gemma4:e4b")
     try:
-        tags = requests.get(f"{url}/api/tags", timeout=3).json()
+        from boq_agent.llm.client import normalize_url
+        tags = requests.get(f"{normalize_url(url)}/api/tags", timeout=3).json()
         names = {m.get("name") for m in tags.get("models", [])}
         if model in names:
             print(f"  AI model  : {model} (ready)")
@@ -52,11 +53,11 @@ def check_ollama() -> None:
 
 def main() -> None:
     os.environ.setdefault("BOQ_WORKSPACE", str(APP_DIR / "workspace"))
-    from webapp import create_app
+    from webapp import create_app, setup_url
 
     lan = "--lan" in sys.argv
     port = free_port()
-    url = f"http://localhost:{port}"
+    url = f"http://127.0.0.1:{port}"
     print("=" * 64)
     print("  BOQ -> RFQ")
     print(f"  Address   : {url}")
@@ -70,7 +71,10 @@ def main() -> None:
     print("  Keep this window open while using the app. Close it to stop.")
     print("=" * 64)
     app = create_app()
-    threading.Timer(2.0, lambda: webbrowser.open(url)).start()
+    first_run = setup_url(app, url)
+    if first_run:
+        print(f"  FIRST RUN : {first_run}")
+    threading.Timer(2.0, lambda: webbrowser.open(first_run or url)).start()
     serve(app, host="0.0.0.0" if lan else "127.0.0.1", port=port, threads=16, channel_timeout=600,
           max_request_body_size=4 * 1024 ** 3, ident="BOQ2RFQ")
 

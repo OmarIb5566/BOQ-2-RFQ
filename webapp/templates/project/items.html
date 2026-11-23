@@ -18,7 +18,7 @@
     <td>{{ x.title }}{% if x.method %} <span class="faint small">({{ x.method }})</span>{% endif %}</td>
     {% if multi %}<td class="small muted">{{ x.file }}</td>{% endif %}
     <td class="right">{{ x.n }}</td>
-    <td><select class="sm" onchange="post('/api/p/{{ p.run_id }}/division', {section_uid: {{ x.uid|tojson|forceescape }}, division: this.value})">
+    <td><select class="sm" data-change-post="/api/p/{{ p.run_id }}/division" data-key="division" data-body='{{ {"section_uid": x.uid}|tojson }}'>
       {% for code, label in divs %}<option value="{{ code }}" {{ 'selected' if code == x.div }}>{{ label }}</option>{% endfor %}</select></td>
   </tr>
   {% endfor %}

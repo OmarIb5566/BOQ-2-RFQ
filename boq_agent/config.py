@@ -10,7 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 @dataclass
 class Settings:
     # --- LLM (Ollama) ---
-    ollama_url: str = os.getenv("OLLAMA_URL", "http://localhost:11434")
+    ollama_url: str = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
     model: str = os.getenv("BOQ_LLM_MODEL", "gemma4:e4b")
     temperature: float = 0.0
     num_ctx: int = 16384

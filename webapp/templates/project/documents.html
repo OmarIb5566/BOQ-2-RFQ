@@ -16,7 +16,7 @@
     <div class="grow"><b>{{ f.filename }}</b><div class="muted small">{{ f.note }} · {{ f.pages }} page(s){% if x.review %} · ⚠ {{ x.review }} sheet(s) read by the vision model — check them{% endif %}</div></div>
     {% if f.path %}
     <a class="btn sm ghost" href="{{ rel(f.path) }}" target="_blank">Open</a>
-    <select class="sm inline" title="What is this file?" onchange="post('/api/p/{{ p.run_id }}/docs/kind', {file_id: '{{ f.id }}', kind: this.value})">
+    <select class="sm inline" title="What is this file?" data-change-post="/api/p/{{ p.run_id }}/docs/kind" data-key="kind" data-body='{{ {"file_id": f.id}|tojson }}'>
       {% for k, l in [('spec', 'Specification'), ('drawing', 'Drawings'), ('ignored', 'Not used')] %}<option value="{{ k }}" {{ 'selected' if f.kind == k }}>{{ l }}</option>{% endfor %}
     </select>
     {% endif %}

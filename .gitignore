@@ -27,3 +27,8 @@ masterformat-2016.pdf
 graphify-out/
 build/
 dist/
+
+# Dev / test environment (tests always use temporary folders, never workspace/)
+.venv-dev/
+.pytest_cache/
+test-artifacts/

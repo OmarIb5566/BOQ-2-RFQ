@@ -272,3 +272,35 @@ def save_view():
 def saved_views(page: str) -> list[dict]:
     return [dict(r) for r in cfg("DB").q("SELECT * FROM saved_views WHERE user_id=? AND page=? ORDER BY name",
                                          (g.user["id"], page))]
+
+
+# ---------------------------------------------------------------------- remembered special-case decisions
+@bp.route("/decisions")
+@login_required
+def decisions_page():
+    from . import decisions
+    rows = decisions.overview(cfg("DB"))
+    groups: dict[str, list] = {}
+    for r in rows:
+        groups.setdefault(r["rule_id"], []).append(r)
+    return render_template("decisions.html", groups=groups, enabled=decisions.enabled(cfg("DB")),
+                           can_change=g.user["role"] in ("admin", "manager", "engineer"))
+
+
+@bp.route("/api/decisions", methods=["POST"])
+@login_required
+def change_decision():
+    from . import decisions
+    if g.user["role"] not in ("admin", "manager", "engineer"):
+        return _err("Your role cannot change remembered decisions.", 403)
+    b = body()
+    db = cfg("DB")
+    key = str(b.get("key", ""))
+    if b.get("forget"):
+        n = decisions.forget_key(db, key)
+        db.audit("decision forgotten", g.user["id"], ip=request.remote_addr, case=key, entries=n)
+        return _ok(message="Forgotten — new projects will ask about this case again.")
+    if not decisions.set_default(db, g.user["id"], key, b.get("decision")):
+        return _err("That decision is no longer remembered — reload the page.", 404)
+    db.audit("decision changed", g.user["id"], ip=request.remote_addr, case=key, decision=b.get("decision"))
+    return _ok(message="Saved — new projects will use this decision.")

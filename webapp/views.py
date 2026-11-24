@@ -29,8 +29,8 @@ from .db import now
 from .store import STAGE_LABEL, STAGES, stage_of, summary_of
 
 bp = Blueprint("main", __name__)
-TABS = [("overview", "Overview"), ("cases", "Special cases"), ("packages", "Work packages"),
-        ("items", "Items"), ("documents", "Specs & drawings"), ("export", "Export"), ("rfq", "RFQs"),
+TABS = [("overview", "Summary"), ("cases", "Special cases"), ("packages", "Work packages"),
+        ("items", "All items"), ("documents", "Specs & drawings"), ("export", "Export"), ("rfq", "RFQs"),
         ("activity", "Activity")]
 
 
@@ -432,7 +432,7 @@ def _tab_cases(s, row) -> dict:
     groups = OrderedDict()
     for p in cases:
         groups.setdefault(p.rule_id, []).append(p)
-    return {"groups": groups, "show": show,
+    return {"groups": groups, "show": show, "remembered": s.remembered,
             "rule_titles": {"XBOQ_MERGE": "Same package in several BOQs"}}
 
 
@@ -602,9 +602,13 @@ def api_decide(run_id):
     ids, decision = b.get("ids") or [], b.get("decision")
     if decision not in ("approved", "denied", "pending") or not ids:
         raise ValueError("Nothing to decide.")
+    from . import decisions
     with cfg("STORE").edit(run_id, g.user["id"]) as (agent, s):
+        chosen = [p for p in s.plan.proposals if p.proposal_id in set(ids)]
+        decisions.forget(s, ids)
         agent.decide_many(s, ids, decision)
         left = sum(p.decision == "pending" for p in s.plan.proposals)
+    decisions.remember(cfg("DB"), g.user["id"], run_id, chosen, decision)
     verb = {"approved": "Approved", "denied": "Denied", "pending": "Reopened"}[decision]
     return {"message": f"{verb} {len(ids)} case(s). " + (f"{left} still open." if left else "All cases decided."),
             "left": left}

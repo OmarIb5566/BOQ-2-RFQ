@@ -13,6 +13,7 @@ MODULES = [
     "webapp.revisions",      # BOQ revisions: carry-forward, comparison
     "webapp.register",       # RFQ register, pricing sheets, bid comparison
     "webapp.collab",         # comments, notifications, search index, trash purge
+    "webapp.decisions",      # special-case decisions remembered across projects
 ]
 
 

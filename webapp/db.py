@@ -163,6 +163,15 @@ def _m7(c):          # Phase 5: comments, notifications, saved views, package ow
                      item_no, text, package, tokenize='unicode61 remove_diacritics 2')""")
 
 
+def _m8(c):          # special-case decisions remembered across projects
+    c.execute("""CREATE TABLE IF NOT EXISTS decision_memory (id TEXT PRIMARY KEY, ts TEXT NOT NULL, user_id INTEGER,
+                 run_id TEXT NOT NULL, rule_id TEXT NOT NULL, case_key TEXT NOT NULL, decision TEXT NOT NULL,
+                 title TEXT NOT NULL DEFAULT '', approve_label TEXT NOT NULL DEFAULT '',
+                 deny_label TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT 'project')""")
+    c.execute("CREATE INDEX IF NOT EXISTS decision_memory_case ON decision_memory(case_key, ts)")
+    c.execute("CREATE INDEX IF NOT EXISTS decision_memory_rule ON decision_memory(rule_id, ts)")
+
+
 MIGRATIONS: list[tuple[int, str, Callable]] = [
     (1, "sign-in throttling and session version", _m1),
     (2, "database job queue and workers", _m2),
@@ -171,6 +180,7 @@ MIGRATIONS: list[tuple[int, str, Callable]] = [
     (5, "uploads and revisions", _m5),
     (6, "RFQ register", _m6),
     (7, "comments, notifications, saved views, search", _m7),
+    (8, "special-case decisions remembered across projects", _m8),
 ]
 LATEST = MIGRATIONS[-1][0]
 

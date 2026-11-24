@@ -41,14 +41,39 @@
     </div>
   </div>
 
+  {# ONE navigation: the four steps of a project, in order. The other pages are quiet "details" links. #}
   {% set exported = s.status == 'exported' %}
-  <nav class="steps">
-    <a class="step done" href="{{ url_for('main.tab', run_id=p.run_id, tab='overview') }}"><span class="num">✓</span>{{ _("Upload & analyse") }}</a>
-    <a class="step {{ 'now' if pending else 'done' }}" href="{{ url_for('main.tab', run_id=p.run_id, tab='cases') }}"><span class="num">{{ '2' if pending else '✓' }}</span>{{ _("Special cases") }}</a>
-    <a class="step {{ 'done' if not pending else '' }}" href="{{ url_for('main.tab', run_id=p.run_id, tab='packages') }}"><span class="num">{{ '✓' if not pending else '3' }}</span>{{ _("Review packages") }}</a>
-    <a class="step {{ 'done' if exported else ('now' if not pending else '') }}" href="{{ url_for('main.tab', run_id=p.run_id, tab='export') }}"><span class="num">{{ '✓' if exported else '4' }}</span>{{ _("Export") }}</a>
-    <a class="step {{ 'done' if s.rfq.get('files') else ('now' if exported else '') }}" href="{{ url_for('main.tab', run_id=p.run_id, tab='rfq') }}"><span class="num">{{ '✓' if s.rfq.get('files') else '5' }}</span>{{ _("RFQ letters") }}</a>
+  {% set has_rfq = s.rfq.get('files') %}
+  {% set steps = [
+      ('cases', _("Special cases"), not pending, pending|length > 0),
+      ('packages', _("Check packages"), not pending, false),
+      ('export', _("Export PDFs"), exported, not pending and not exported),
+      ('rfq', _("RFQ letters"), has_rfq, exported and not has_rfq)] %}
+  <nav class="steps" aria-label="{{ _('Steps') }}">
+    {% for k, label, done, now in steps %}
+    <a class="step {{ 'on' if tab == k }} {{ 'now' if now else ('done' if done else '') }}" href="{{ url_for('main.tab', run_id=p.run_id, tab=k) }}"{% if tab == k %} aria-current="page"{% endif %}>
+      <span class="num">{{ '✓' if done and not now else loop.index }}</span>{{ label }}
+      {% if k == 'cases' and pending %}<span class="cnt hot">{{ pending|length }}</span>{% endif %}
+    </a>
+    {% endfor %}
   </nav>
+  <nav class="details-links small" aria-label="{{ _('Details') }}">
+    <span class="muted">{{ _("Details:") }}</span>
+    {% for k, l in tabs if k not in ('cases', 'packages', 'export', 'rfq') and (k != 'documents' or has_docs) %}
+      <a class="{{ 'on' if tab == k }}" href="{{ url_for('main.tab', run_id=p.run_id, tab=k) }}">{{ _(l) }}{% if k in counts %} <span class="cnt">{{ counts[k] }}</span>{% endif %}</a>
+    {% endfor %}
+  </nav>
+  {% set hints = {
+      'cases': _("Step 1 — The app found situations where the packaging rules need your choice. Read each case and click Approve or Deny. Your choice is remembered for future projects."),
+      'packages': _("Step 2 — Check that each work package holds the right items. Open a package to see its items; move an item if it is in the wrong one. When it looks right, go to Export."),
+      'export': _("Step 3 — Create one PDF per work package, cut out of the original BOQ. Do this again whenever you change the packages."),
+      'rfq': _("Step 4 — Draft the RFQ letters for the exported packages. Each RFQ is then tracked in the RFQ register."),
+      'overview': _("Summary of the uploaded files and anything worth a look."),
+      'items': _("Every BOQ item and the category it was put in."),
+      'documents': _("Specifications and drawings matched to the packages."),
+      'activity': _("Who changed what in this project, and the background jobs."),
+  } %}
+  {% if hints.get(tab) %}<p class="step-hint">💡 {{ hints[tab] }}</p>{% endif %}
 
   <div id="jobbar" class="banner info {{ '' if job else 'hidden' }}">
     <span class="spin" style="color:var(--brand)"></span>
@@ -60,15 +85,6 @@
   <div class="banner warn">⚠ {{ _("The packages changed after the last export —") }} <a href="{{ url_for('main.tab', run_id=p.run_id, tab='export') }}">{{ _("export again") }}</a> {{ _("so the PDFs and RFQs match.") }}</div>
   {% endif %}
 
-  <nav class="tabs">
-    {% for k, l in tabs %}
-      {% if k != 'documents' or has_docs %}
-      <a class="{{ 'on' if tab == k }}" href="{{ url_for('main.tab', run_id=p.run_id, tab=k) }}">{{ _(l) }}
-        {% if k == 'cases' and counts.cases %}<span class="cnt hot">{{ counts.cases }}</span>
-        {% elif k in counts and k != 'cases' %}<span class="cnt">{{ counts[k] }}</span>{% endif %}</a>
-      {% endif %}
-    {% endfor %}
-  </nav>
 </div>
 <div id="main">{% block tab %}{% endblock %}</div>
 {% endblock %}

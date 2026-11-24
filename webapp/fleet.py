@@ -50,7 +50,7 @@ ROLE_HELP = {
 
 def config(db) -> dict:
     c = {"profile": os.getenv("BOQ_MODEL_PROFILE", "staged"), "cache_on": True, "memory_on": True,
-         "verify_on": False, "fallbacks": {}}
+         "verify_on": False, "decisions_on": True, "fallbacks": {}}
     c.update({r: DEFAULTS[r] for r in ROLES})
     c.update(db.setting("models", {}) or {})
     return c

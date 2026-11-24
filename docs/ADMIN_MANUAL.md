@@ -33,6 +33,9 @@ Keep one local administrator until the directory sign-in is confirmed to work, t
 * **Reuse answers**: identical questions are answered from the cache — re-running an unchanged BOQ costs nothing.
 * **Remember corrections**: when a user moves an item to another category, the same item text gets that category in
   later analyses.
+* **Remember special-case decisions**: every Approve / Deny is stored; a new project's open cases get the latest
+  decision of the same kind of case (else of the same rule), marked "Remembered" for review. A revised BOQ takes its
+  own project's decisions first. Users review, change or forget them on Account menu › **Remembered decisions**.
 * **Second opinion**: a different model re-checks doubtful items and *flags* disagreements (it never changes an answer).
 * Cloud models are never offered.
 

@@ -108,6 +108,7 @@ def message_ids() -> set[str]:
             "unchanged", "approved", "denied", "pending", "Engine", "Server", "Set in the admin console", "Database",
             "Background worker", "Disk (workspace)", "Microsoft Excel", "Tesseract OCR", "Sign-in"}
     ids |= {f"js:{s}" for s in JS_TEXTS}
+    ids |= {"same case", "same rule"}
     ids |= {k for _p, k in SUMMARY_WORDS} | {"just now", "{n} min ago", "{n} h ago", "{n} d ago"}
     return {i for i in ids if i.strip()}
 

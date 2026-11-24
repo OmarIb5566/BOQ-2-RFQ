@@ -24,6 +24,7 @@ from ..text_utils import keyword_hits, norm, truncate
 from .common import Cache, DocRules, key_of
 
 PROMPT_VERSION = "m1"
+GENERAL_KINDS = ("general", "cover")
 _CITED_CODE = re.compile(r"(?:section|sec\.?|قسم|القسم)\s*[:\-]?\s*(\d{2})\s?(\d{2})\s?(\d{2})(?!\d)|"
                          r"(?:section|sec\.?|قسم|القسم)\s*[:\-]?\s*(\d{5})(?!\d)|"
                          r"(?<!\d)(\d{2}) (\d{2}) (\d{2})(?!\d)", re.I)
@@ -108,7 +109,7 @@ class Matcher:
 
         return [c for c in hits if not covered(c)] or list(hits)
 
-    def _line_targets(self, line: str, prs: list[WPProfile]) -> list[tuple[WPProfile, str]]:
+    def _line_targets(self, line: str, prs: list[WPProfile], by_division: bool = True) -> list[tuple[WPProfile, str]]:
         """Packages a legend / title line points to, with the category or division it named.
         Words in brackets are qualifiers (colour, texture, brand: 'METAL LOUVERS (W/ WOODEN LOOK COAT)'),
         so the text outside the brackets is matched first."""
@@ -118,6 +119,8 @@ class Matcher:
             cats = self._cats_in(text)
             if cats:     # the line names a trade: only its packages (none if this BOQ has no such package)
                 return [(p, self.rules.categories[c].name_en) for c in cats for p in self._holders(prs, c)]
+        if not by_division:
+            return []
         for text in (primary, full):
             div = self.rules.division_hint(text)
             if div and self.rules.mode(div) == "as_is":
@@ -155,10 +158,15 @@ class Matcher:
             for p in prs:
                 if any(num == r or (len(r) >= 4 and num.endswith(r)) for r in p.dwg_refs):
                     out.append((p, "drawing ref", f"the BOQ cites drawing {sh.number}", 1.0))
-        for line in [sh.title, *sh.legend]:
+        if sh.kind in GENERAL_KINDS:
+            return out       # notes / symbols / abbreviations / cover: project-wide, only when the BOQ cites it
+        # on plans / sections the text is mostly room names ("STERILIZING AND FILLING"): there, only a named
+        # material counts; a whole division is inferred only from the title or from a legend / schedule sheet
+        listing = sh.kind in ("legend", "schedule", "detail")
+        for k, line in enumerate([sh.title, *sh.legend]):
             if not line:
                 continue
-            for p, what in self._line_targets(line, prs):
+            for p, what in self._line_targets(line, prs, by_division=listing or k == 0):
                 out.append((p, "legend", f"“{truncate(line, 70)}” → {what}", 0.85))
         for r in self.dr.layout:
             if sh.discipline not in r.get("disciplines", []):
@@ -228,7 +236,7 @@ class Matcher:
             if (fmap.get(sh.file_id) and fmap[sh.file_id].kind != "drawing") or sh.kind == "not a drawing":
                 continue
             found = self._sheet(sh, prs)
-            if not found and (sh.title or sh.legend):
+            if not found and (sh.title or sh.legend) and sh.kind not in GENERAL_KINDS:
                 body = f"{sh.number} {sh.title} ({sh.kind or 'sheet'}, {sh.discipline or 'trade unknown'})\n" + \
                        "\n".join(sh.legend[:15])
                 found = self._ask("Drawing sheet", body, prs)

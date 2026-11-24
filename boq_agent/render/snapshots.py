@@ -326,16 +326,47 @@ def render_all(doc: BOQDocument, plan: Plan, out_dir: Path, settings: Settings, 
                 log(f"Excel rendering unavailable ({e}); using the built-in HTML renderer.")
         com_books: dict[str, object] = {}
         html_books: dict[str, object] = {}
+        no_com: set[str] = set()          # files Excel could not open -> built-in renderer
+
+        def com_book(f: SourceFile):
+            """The workbook opened in Excel, or None. Excel sometimes returns nothing instead of an error (a hidden
+            prompt, a stuck instance): try once more with a fresh Excel, then give up on Excel for this file only."""
+            nonlocal xl
+            if f.id in com_books or f.id in no_com:
+                return com_books.get(f.id)
+            path = str(Path(f.work_path).resolve())
+            for attempt in (1, 2):
+                try:
+                    wb = xl.Workbooks.Open(path, UpdateLinks=0, ReadOnly=True)
+                except Exception as e:  # noqa: BLE001
+                    wb, err = None, e
+                else:
+                    err = "Excel returned no workbook"
+                if wb is not None:
+                    com_books[f.id] = wb
+                    return wb
+                if attempt == 1 and not com_books:      # nothing open yet: a fresh Excel costs nothing
+                    try:
+                        from ..excel_com import excel_app
+                        xl = stack.enter_context(excel_app())
+                        continue
+                    except Exception:  # noqa: BLE001
+                        break
+                break
+            if mode == "excel":
+                raise RuntimeError(f"Microsoft Excel could not open {f.label} ({err}).")
+            no_com.add(f.id)
+            log(f"Excel could not open {f.label} ({err}); its rows use the built-in renderer.")
+            return None
+
         for wp in plan.work_packages:
             pieces: list[Path] = []
             for k, (f, uids) in enumerate(_file_parts(doc, wp)):
                 base = tmp / f"{wp.wp_id}_{k}.pdf"
                 if f.kind == "pdf":
                     pieces.append(_pdf_part(doc, f, uids, base))
-                elif xl is not None:
-                    if f.id not in com_books:
-                        com_books[f.id] = xl.Workbooks.Open(str(Path(f.work_path).resolve()), UpdateLinks=0, ReadOnly=True)
-                    pieces += _excel_com_part(xl, com_books[f.id], doc, f, uids, base)
+                elif xl is not None and (wb := com_book(f)) is not None:
+                    pieces += _excel_com_part(xl, wb, doc, f, uids, base)
                 else:
                     pieces.append(_excel_html_part(doc, f, uids, wp, base, settings, html_books))
             out = out_dir / wp_filename(wp)

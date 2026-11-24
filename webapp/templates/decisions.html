@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Remembered decisions") }} · BOQ → RFQ{% endblock %}
+{% block content %}
+<h1>{{ _("Remembered decisions") }}</h1>
+<p class="muted">{{ _("How each special case was last decided. New projects get these decisions automatically (marked for review on their Special cases tab). Change one here to change what future projects get — projects already analysed are not changed.") }}</p>
+{% if not enabled %}<div class="banner warn">{{ _("Remembering decisions is switched off (Admin › AI models): new projects ask about every case.") }}</div>{% endif %}
+
+{% for rule, rows in groups.items() %}
+<div class="card" style="margin-bottom:1rem">
+  <div class="card-head"><h3 style="margin:0">{{ rows[0].title.split('→')[0] or rule }}</h3><span class="tag">{{ rows|length }}</span></div>
+  <div class="table-wrap">
+  <table class="t">
+    <thead><tr><th>{{ _("Case") }}</th><th>{{ _("Decision for new projects") }}</th><th>{{ _("Last decided") }}</th><th class="right">{{ _("Times") }}</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td class="small" dir="auto">{{ r.title }}</td>
+      <td style="min-width:300px">
+        {% if can_change %}
+        <div class="seg" role="group">
+          <button type="button" class="{{ 'on' if r.decision == 'approved' }}" data-post="/api/decisions" data-then="reload"
+                  data-body='{{ {"key": r.case_key, "decision": "approved"}|tojson }}'>✓ {{ r.approve_label or _('Approve') }}</button>
+          <button type="button" class="{{ 'on' if r.decision == 'denied' }}" data-post="/api/decisions" data-then="reload"
+                  data-body='{{ {"key": r.case_key, "decision": "denied"}|tojson }}'>✗ {{ _('Keep as') }} {{ r.deny_label or _('Deny') }}</button>
+        </div>
+        {% else %}<span class="tag {{ 'ok' if r.decision == 'approved' else '' }}">{{ _(r.decision) }}</span>{% endif %}
+      </td>
+      <td class="small">{{ r.ts|ago }}{% if r.who %} · {{ r.who }}{% endif %}<div class="faint">{% if r.pname %}{{ r.pname }}{% else %}{{ _("set on this page") }}{% endif %}</div></td>
+      <td class="right small" title="{{ _('approved') }} {{ r.n_app }} · {{ _('denied') }} {{ r.n - r.n_app }}">{{ r.n }}</td>
+      <td class="right">{% if can_change %}<button type="button" class="btn ghost sm" data-post="/api/decisions" data-then="reload" data-confirm="{{ _('Forget this decision? New projects will ask about this case again.') }}" data-body='{{ {"key": r.case_key, "forget": true}|tojson }}'>{{ _("Forget") }}</button>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% else %}
+<div class="card empty"><h2>{{ _("Nothing remembered yet") }}</h2><p>{{ _("Decisions are remembered when you approve or deny special cases in a project.") }}</p></div>
+{% endfor %}
+{% endblock %}

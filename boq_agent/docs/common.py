@@ -96,6 +96,13 @@ class DocRules:
                 # one-letter codes (A-101, S-201) only count as the first part of the number
                 if tok in v["codes"] and (len(tok) > 1 or i == 0):
                     return k
+        # document-number standards that pack trade + document type + size into one field:
+        # E2405-TND-001-ADE-10100 -> "ADE" = A(rchitectural) D(rawing) E(sheet size)
+        for tok in toks[1:]:
+            if re.fullmatch(r"[A-Z]D[A-Z]", tok):
+                for k, v in self.disciplines.items():
+                    if tok[0] in v["codes"]:
+                        return k
         t = norm(f"{title} {text[:4000]}")
         best, n_best = "", 0
         for k, v in self.disciplines.items():

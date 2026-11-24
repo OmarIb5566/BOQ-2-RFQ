@@ -23,6 +23,9 @@
 </div>
 {% endif %}
 
+{% if remembered %}
+<div class="banner info" style="margin-bottom:1rem">↺ {{ _("{n} case(s) were decided automatically, the way they were decided in earlier projects. Check them — one click changes a decision.", n=remembered|length) }} <a href="{{ url_for('collab_views.decisions_page') }}">{{ _("Remembered decisions") }} →</a></div>
+{% endif %}
 {% for rule, cases in groups.items() %}
   {% set open_ids = cases|selectattr("decision", "equalto", "pending")|map(attribute="proposal_id")|list %}
   {% if groups|length > 1 or cases|length > 3 %}
@@ -42,6 +45,8 @@
       <h3 style="margin:0">{{ c.title_en }}</h3>
       <span class="tag {{ 'warn' if c.decision == 'pending' else 'ok' if c.decision == 'approved' else '' }}">{{ {'pending': 'Open', 'approved': 'Approved', 'denied': 'Denied'}[c.decision] }}</span>
     </div>
+    {% set mem = remembered.get(c.proposal_id) %}
+    {% if mem %}<div class="remembered small">↺ {{ _("Remembered") }}: {{ _(mem.decision) }} {{ _("in") }} “{{ mem.from_name or mem.from_run }}” ({{ mem.ts[:10] }}) · {{ _(mem.match) }}</div>{% endif %}
     <p style="margin:.4rem 0">{{ c.message_en }}</p>
     {% if c.message_ar %}<p class="rtl muted small" style="margin:0">{{ c.message_ar }}</p>{% endif %}
     <details class="more" data-lazy="{{ url_for('main.case_items', run_id=p.run_id, pid=c.proposal_id) }}" id="items-{{ loop.index }}-{{ rule }}">

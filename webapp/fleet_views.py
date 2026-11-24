@@ -21,7 +21,8 @@ def models():
     names = sorted({m["name"] for m in local})
     if request.method == "POST":
         c = fleet.config(db)
-        new = {k: c[k] for k in ("profile", "cache_on", "memory_on", "verify_on", "fallbacks", *fleet.ROLES)}
+        new = {k: c[k] for k in ("profile", "cache_on", "memory_on", "verify_on", "decisions_on", "fallbacks",
+                                 *fleet.ROLES)}
         for r in fleet.ROLES:
             v = request.form.get(r, "")
             if v and v not in names:
@@ -32,7 +33,7 @@ def models():
             fb = [x for x in request.form.getlist(f"fallback_{r}") if x in names and x != new[r]]
             new["fallbacks"][r] = fb[:3]
         new["profile"] = "resident" if request.form.get("profile") == "resident" else "staged"
-        for k in ("cache_on", "memory_on", "verify_on"):
+        for k in ("cache_on", "memory_on", "verify_on", "decisions_on"):
             new[k] = request.form.get(k) == "on"
         db.set_setting("models", new, g.user["id"])
         db.audit("models changed", g.user["id"], ip=request.remote_addr, **{r: new[r] for r in fleet.ROLES},

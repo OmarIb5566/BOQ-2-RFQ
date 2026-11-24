@@ -80,6 +80,7 @@ try:
              ("activity", f"/p/{run}/activity"), ("package", f"/p/{run}/package/DIV03"),
              ("members", f"/p/{run}/members"), ("revisions", f"/p/{run}/revisions"), ("print", f"/p/{run}/print"),
              ("search", "/search?q=concrete"), ("register", "/register"), ("help", "/help"),
+             ("decisions", "/decisions"),
              ("admin-health", "/admin/health"), ("admin-queue", "/admin/queue"), ("admin-models", "/admin/models"),
              ("admin-audit", "/admin/audit"), ("admin-usage", "/admin/usage"), ("admin-settings", "/admin/settings")]
     for name, url in pages:
@@ -95,7 +96,8 @@ try:
     print("comments shown:", p.js("document.querySelectorAll('.comment').length"))
     # Arabic
     p.act_and_wait("""(() => { const f = [...document.querySelectorAll('form')].find(x => x.action.includes('/lang/ar')); f.submit(); })()""")
-    for name, url in pages[:8] + [("register", "/register"), ("admin-health", "/admin/health"), ("search", "/search?q=خرسانه")]:
+    for name, url in pages[:8] + [("register", "/register"), ("admin-health", "/admin/health"), ("search", "/search?q=خرسانه"),
+                                  ("decisions", "/decisions")]:
         p.goto(BASE + url); b.idle(0.3)
         p.shot(OUT / f"ar-{name}.png", full=True)
         check_width(p, url)

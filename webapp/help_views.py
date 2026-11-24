@@ -7,10 +7,16 @@ from .auth import login_required
 
 bp = Blueprint("help_views", __name__)
 
-APP_VERSION = "2.0"
+APP_VERSION = "2.1"
 
 # newest first; shown once to each user after an update (users.seen_version)
 WHATS_NEW = [
+    ("2.1", [
+        "Simpler project page: one row of numbered steps (special cases → check packages → export → RFQ letters) with a short hint on each step.",
+        "Special-case decisions are remembered for new projects; review them under Account menu › Remembered decisions.",
+        "Drawings are matched better: general notes, symbols, abbreviations, cover and drawing-list sheets are no longer attached to every package; plans go to the trades that need them.",
+        "Export no longer fails when Microsoft Excel cannot open a workbook: that file is cut out with the built-in renderer instead.",
+    ]),
     ("2.0", [
         "Rowad branding, Arabic interface (account menu › العربية).",
         "Roles: administrator, manager, engineer, viewer — plus members per project.",
@@ -25,11 +31,11 @@ WHATS_NEW = [
 ]
 
 TOUR = [
-    ("New project", "Upload the BOQ — Excel or PDF, Arabic or English — and its specs and drawings if you have them."),
-    ("Special cases", "Approve or deny each flowchart special case (marble with masonry? one package for several BOQs?)."),
-    ("Work packages", "Check the packages; move an item to another category if needed — the app remembers your choice."),
-    ("Export & RFQs", "Export the package PDFs, then draft the RFQ letters; they enter the RFQ register."),
-    ("RFQ register", "Track each RFQ: issue, record quotes, compare bids, award."),
+    ("New project", "Upload the BOQ (Excel or PDF, Arabic or English), plus specs and drawings if you have them. The app reads it and proposes work packages."),
+    ("1 · Special cases", "Approve or deny each special case (for example: marble together with masonry?). Your choices are remembered."),
+    ("2 · Check packages", "Check the work packages; move an item to another package if needed."),
+    ("3 · Export PDFs", "Create one PDF per work package, cut out of the original BOQ."),
+    ("4 · RFQ letters", "Draft the RFQ letters; they are then tracked in the RFQ register (issue, quotes, compare, award)."),
 ]
 
 

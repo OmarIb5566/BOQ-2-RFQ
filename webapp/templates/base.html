@@ -44,6 +44,7 @@
       {% for code, l in LANGS.items() if code != lang %}
       <form method="post" action="{{ url_for('i18n.set_lang', code=code) }}"><input type="hidden" name="_csrf" value="{{ csrf_token }}"><input type="hidden" name="next" value="{{ request.full_path }}"><button type="submit">🌐 {{ l.name }}</button></form>
       {% endfor %}
+      <a href="{{ url_for('collab_views.decisions_page') }}">{{ _("Remembered decisions") }}</a>
       <a href="{{ url_for('help_views.help_page') }}">{{ _("Help") }}</a>
       <a href="{{ url_for('help_views.whats_new') }}">{{ _("What's new") }}</a>
       <hr>

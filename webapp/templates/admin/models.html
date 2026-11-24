@@ -30,6 +30,7 @@
     </div>
     <label class="check"><input type="checkbox" name="cache_on" {{ 'checked' if c.cache_on }}> {{ _("Reuse answers to identical questions (re-runs of unchanged BOQs cost nothing)") }}</label>
     <label class="check"><input type="checkbox" name="memory_on" {{ 'checked' if c.memory_on }}> {{ _("Remember users' corrections: the same item text gets the category a user chose before") }}</label>
+    <label class="check"><input type="checkbox" name="decisions_on" {{ 'checked' if c.decisions_on }}> {{ _("Remember special-case decisions: a new project's open cases are decided the way the same cases were decided before (marked for review)") }}</label>
     <label class="check"><input type="checkbox" name="verify_on" {{ 'checked' if c.verify_on }}> {{ _("Second opinion: a different model re-checks doubtful items and flags disagreements") }}</label>
     <p class="hint">{{ _("Only models installed on this server are offered; cloud models are never used.") }} {{ _("Measure with the benchmark before changing the defaults (see the admin manual).") }}</p>
   </div>

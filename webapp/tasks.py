@@ -87,6 +87,10 @@ def analyze(ctx: JobContext) -> str:
             from .revisions import carry_forward
             carried = carry_forward(ctx.runtime, man["carry_from"], s, agent)
             agent.save(s)
+        from .decisions import apply as apply_remembered
+        n_mem = apply_remembered(db, agent, s, ctx.run_id)       # open cases only: a revision's own decisions win
+        if n_mem:
+            carried = (carried + " · " if carried else "") + f"{n_mem} special case(s) decided as before"
         db.upsert_project(ctx.run_id, error="")
         store.saved(ctx.run_id, ctx.user_id, s)
     after_analysis(ctx.runtime, ctx.run_id, s)

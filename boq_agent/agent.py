@@ -265,7 +265,15 @@ class BOQAgent:
             return
         import time
 
+        from .docs.index import DRAWING_RULES, build_index
         from .docs.match import Matcher
+
+        if docs.sheets and docs.stats.get("drawing_rules") != DRAWING_RULES:
+            # saved with older drawing-reading rules: read the sheets again (fast: text layer; vision answers cached)
+            self.log("Reading the drawings again with the improved rules …")
+            llm_ok = self.settings.use_llm and self.llm.status()[0]
+            st = self.settings if llm_ok else Settings(**{**self.settings.__dict__, "use_llm": False})
+            build_index(docs, st, self.rules, self._cache(), self.log, self.progress)
 
         if use_llm is None:
             use_llm = self.settings.use_llm and self.llm.status()[0]

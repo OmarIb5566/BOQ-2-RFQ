@@ -21,7 +21,7 @@ def project(app, admin_client, villa_xlsx):
 def pages(run: str, wp_key: str) -> list[str]:
     tabs = ["overview", "cases", "packages", "items", "export", "rfq", "activity"]
     return (["/projects", "/projects?trash=1", "/new", "/search", "/search?q=concrete", "/search?q=paint&mode=meaning",
-             "/register", "/register?open=1&overdue=1", "/help", "/whats-new", "/account",
+             "/register", "/register?open=1&overdue=1", "/decisions", "/help", "/whats-new", "/account",
              f"/p/{run}/members", f"/p/{run}/revisions", f"/p/{run}/revise", f"/p/{run}/print",
              f"/p/{run}/items?view=sections", f"/p/{run}/package/{wp_key}", f"/register/compare/{run}/{wp_key}"]
             + [f"/p/{run}/{t}" for t in tabs])

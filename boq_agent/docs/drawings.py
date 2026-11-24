@@ -23,7 +23,32 @@ _NUM_ONLY = re.compile(r"^[A-Z]{0,3}[-.]?\d{2,5}[A-Z]?$")
 MIN_TEXT = 150          # characters of text layer below which a sheet is treated as a scan
 # sentences of general notes / disclaimers (not legend entries)
 _PROSE = re.compile(r"\b(shall|must|should|is to|are to|to be|do not|prior to|unless|notified|responsible|reproduced|"
-                    r"property of|confidential|permission|in conjunction|etc|i\.e|e-mail|p\. ?o\. box)\b|^\d{1,2}\.\s")
+                    r"property of|confidential|permission|in conjunction|etc|i\.e|e-mail|p\. ?o\. box|refer to|"
+                    r"coordinate|coordinated|verify|verified|contractor|engineer|approval|accordance|"
+                    r"provided|required|installation of|after|before)\b|^\d{1,2}\s*[-.)]\s*")
+# a sheet of project-wide reference material (not the scope of one trade): never attached automatically
+_GENERAL_MARKERS = ("general notes", "abbreviations", "symbols", "numbering system", "annotation blocks",
+                    "drawing list", "index of drawings", "dimensioning notes", "miscellaneous notes")
+
+
+def is_note(line: str) -> bool:
+    """A line of a written note (a sentence or a wrapped piece of one), not a legend entry naming a material.
+    Legend entries are short labels: 'ACRYLIC PAINT ON PLASTER', 'BLACK GRANITE TILE SKIRTING'."""
+    t = line.strip()
+    n = norm(t)
+    if _PROSE.search(n):
+        return True
+    if t[:1].islower():                                   # continues a sentence from the line above
+        return True
+    if t.endswith(".") or re.search(r"[a-zA-Z]{2}[.;] +\w", t):   # a sentence ends on it / in it
+        return True
+    return len(t.split()) > 12                            # labels are short; notes run on
+
+
+def is_general_sheet(lines) -> bool:
+    """General notes / symbols / abbreviations sheets name every trade; they describe the whole project."""
+    text = norm(" ".join(t for t, _, _ in lines))
+    return sum(m in text for m in _GENERAL_MARKERS) >= 2
 
 
 def _lines(page) -> list[tuple[str, float, tuple]]:
@@ -85,7 +110,7 @@ def _legend(lines, boiler: set[str], limit: int = 80) -> list[str]:
         n = norm(t)
         if n in boiler or n in seen or len(t) < 8 or len(re.findall(r"[^\W\d_]{2,}", t)) < 3:
             continue
-        if _PROSE.search(n) or _TOKEN.fullmatch(t.strip("-_. ")):
+        if is_note(t) or _TOKEN.fullmatch(t.strip("-_. ")):
             continue
         seen.add(n)
         out.append(t[:200])
@@ -103,7 +128,8 @@ def boilerplate(all_pages: list[list[tuple]], share: float, keep: Callable[[str]
     if len(pages) < 3:
         return set()
     cnt = Counter(n for p in pages for n in {norm(t) for t, _, _ in p})
-    return {n for n, c in cnt.items() if c >= max(3, share * len(pages)) and not (keep(n) and not _PROSE.search(n))}
+    raw = {norm(t): t for p in pages for t, _, _ in p}
+    return {n for n, c in cnt.items() if c >= max(3, share * len(pages)) and not (keep(n) and not is_note(raw[n]))}
 
 
 def index_drawing_pages(pdf, file_id: str, raw: list[list[tuple]], boiler: set[str], rules: DocRules,
@@ -131,7 +157,7 @@ def index_drawing_pages(pdf, file_id: str, raw: list[list[tuple]], boiler: set[s
         else:
             sh.review, sh.title = True, "(scanned sheet — vision model off)"
         if sh.kind != "not a drawing":
-            sh.kind = rules.sheet_kind(sh.title, sh.number)
+            sh.kind = "general" if chars >= MIN_TEXT and is_general_sheet(lines) else rules.sheet_kind(sh.title, sh.number)
             sh.discipline = sh.discipline or rules.discipline(sh.title, sh.number, " ".join(sh.legend[:20]))
         sheets.append(sh)
     return sheets

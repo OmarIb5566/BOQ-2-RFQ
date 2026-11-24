@@ -296,4 +296,5 @@ class Session(BaseModel):
     documents: ProjectDocs = Field(default_factory=ProjectDocs)   # specs & drawings (optional uploads)
     wp_names: dict[str, str] = Field(default_factory=dict)        # user renames, per work-package key
     rfq_draft: dict = Field(default_factory=dict)                 # RFQ form as last edited (kept between visits)
+    remembered: dict = Field(default_factory=dict)  # proposal_id -> decision taken from earlier projects (web app)
     log: list[str] = Field(default_factory=list)

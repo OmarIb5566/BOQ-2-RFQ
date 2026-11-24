@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import re
 from collections import Counter, OrderedDict
 from functools import wraps
 from pathlib import Path
@@ -819,6 +820,82 @@ def api_rfq_template(run_id):
         s.rfq_draft.pop("prefill", None)
         agent.save(s)
     return {"message": msg}
+
+
+SUPPLIER_LIST_EXT = (".xlsx", ".xlsm", ".xls", ".csv")
+
+
+@bp.route("/api/p/<run_id>/rfq/suppliers-file", methods=["POST"])
+@api
+def api_rfq_suppliers_file(run_id):
+    """Optional: a supplier list (who does which trade) fills the supplier names next to the packages."""
+    f = request.files.get("suppliers")
+    ext = Path(f.filename).suffix.lower() if f and f.filename else ""
+    if ext not in SUPPLIER_LIST_EXT:
+        raise ValueError("Choose an Excel or CSV file (.xlsx, .xls, .csv).")
+    head = _peek(f)
+    if ext == ".csv":
+        if b"\x00" in head or head.startswith((b"PK", b"\xd0\xcf")):
+            raise ValueError("That file is not a real CSV text file.")
+    elif check_head(head, "list" + ext):
+        raise ValueError(f"That file is not a real {ext} file.")
+    f.stream.seek(0, 2)
+    if f.stream.tell() > 10 * 1024 ** 2:
+        raise ValueError("The supplier list is too large (10 MB at most).")
+    f.stream.seek(0)
+    store = cfg("STORE")
+    dst = store.run_dir(run_id) / f"supplier_list{ext}"
+    for old in store.run_dir(run_id).glob("supplier_list.*"):
+        old.unlink(missing_ok=True)
+    f.save(dst)
+    cfg("JOBS").submit("rfq-suppliers", "Filling suppliers from the list", run_id, g.user["id"],
+                       {"file": str(dst), "name": Path(f.filename).name[:120]})
+    return {"message": "Reading the supplier list …", "job": True}
+
+
+@bp.route("/api/p/<run_id>/rfq/suppliers-undo", methods=["POST"])
+@api
+def api_rfq_suppliers_undo(run_id):
+    """Remove the names the last supplier list added (names typed by hand stay)."""
+    with cfg("STORE").edit(run_id, g.user["id"]) as (agent, s):
+        imp = s.rfq_draft.pop("supplier_import", None) or {}
+        sups = s.rfq_draft.get("suppliers", {})
+        n = 0
+        for key, names in (imp.get("added") or {}).items():
+            before = len(sups.get(key, []))
+            sups[key] = [x for x in sups.get(key, []) if x not in names]
+            n += before - len(sups[key])
+        agent.save(s)
+    return {"message": f"{n} supplier name(s) removed."}
+
+
+@bp.route("/p/<run_id>/rfq/suppliers-example.xlsx")
+@login_required
+def rfq_suppliers_example(run_id):
+    """An example list in the simplest layout, using this project's package names."""
+    import io as _io
+
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill
+
+    _row(run_id)
+    s = cfg("STORE").load(run_id)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Suppliers"
+    ws.append(["Supplier", "Packages"])
+    for c in ws[1]:
+        c.font, c.fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="1F3864")
+    names = [re.sub(r"^Div \d+\s*:\s*", "", w.name_en) for w in s.plan.work_packages][:6] or ["Masonry", "Plaster"]
+    ws.append(["Supplier A (example)", ", ".join(names[:2])])
+    ws.append(["Supplier B (example)", names[2] if len(names) > 2 else names[0]])
+    ws.append(["Supplier C (example)", ", ".join(names[3:6]) or names[-1]])
+    ws.column_dimensions["A"].width, ws.column_dimensions["B"].width = 34, 70
+    buf = _io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name="supplier-list-example.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 # ---------------------------------------------------------------------- project management

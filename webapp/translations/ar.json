@@ -654,5 +654,22 @@
 "Summary of the uploaded files and anything worth a look.": "ملخص الملفات المرفوعة وما يستحق المراجعة.",
 "Upload the BOQ (Excel or PDF, Arabic or English), plus specs and drawings if you have them. The app reads it and proposes work packages.": "ارفع جدول الكميات (Excel أو PDF، عربي أو إنجليزي)، ومعه المواصفات والرسومات إن وُجدت. يقرؤه التطبيق ويقترح حزم الأعمال.",
 "Who changed what in this project, and the background jobs.": "من غيّر ماذا في هذا المشروع، والمهام الجارية في الخلفية.",
-"Drawings are matched better: general notes, symbols, abbreviations, cover and drawing-list sheets are no longer attached to every package; plans go to the trades that need them.": "مطابقة أدق للرسومات: لم تعد لوحات الملاحظات العامة والرموز والاختصارات والغلاف وقائمة اللوحات تُرفق بكل الحزم؛ وتذهب المساقط إلى الأعمال التي تحتاجها."
+"Drawings are matched better: general notes, symbols, abbreviations, cover and drawing-list sheets are no longer attached to every package; plans go to the trades that need them.": "مطابقة أدق للرسومات: لم تعد لوحات الملاحظات العامة والرموز والاختصارات والغلاف وقائمة اللوحات تُرفق بكل الحزم؛ وتذهب المساقط إلى الأعمال التي تحتاجها.",
+"Example file": "ملف نموذجي",
+"Fill suppliers": "تعبئة الموردين",
+"Fill suppliers from a list": "تعبئة الموردين من قائمة",
+"From": "من",
+"Not matched to any package:": "لم يُطابَق مع أي حزمة:",
+"RFQ letters: optionally upload your Excel list of suppliers and their trades — the supplier names are filled in next to the matching packages (Undo removes them again).": "خطابات طلب الأسعار: يمكنك اختياريًا رفع قائمة Excel بالموردين وتخصصاتهم — تُملأ أسماء الموردين بجوار الحزم المطابقة (والتراجع يزيلها).",
+"Remove the names this list added? Names you typed stay.": "إزالة الأسماء التي أضافتها هذه القائمة؟ الأسماء التي كتبتها تبقى.",
+"Undo": "تراجع",
+"Upload the Excel list of suppliers and the packages or trades they work in. The names are added next to the matching packages below — you can still change them. Names you typed are never removed.": "ارفع قائمة Excel بالموردين والحزم أو التخصصات التي يعملون بها. تُضاف الأسماء بجوار الحزم المطابقة أدناه — ويمكنك تعديلها. الأسماء التي كتبتها لا تُحذف أبدًا.",
+"optional": "اختياري",
+"{n} name(s) added to {m} package(s).": "أُضيف {n} اسم إلى {m} حزمة.",
+"{n} supplier(s), {t} trade(s) in the file": "{n} مورد، {t} تخصص في الملف",
+"{n} trade(s) matched by the AI — please check": "{n} تخصص طابقه الذكاء الاصطناعي — يرجى المراجعة",
+"Reading the supplier list …": "جارٍ قراءة قائمة الموردين …",
+"Choose an Excel or CSV file (.xlsx, .xls, .csv).": "اختر ملف Excel أو CSV (‎.xlsx أو ‎.xls أو ‎.csv).",
+"The supplier list is too large (10 MB at most).": "قائمة الموردين كبيرة جدًا (10 ميجابايت كحد أقصى).",
+"Filling suppliers from the list": "تعبئة الموردين من القائمة"
 }

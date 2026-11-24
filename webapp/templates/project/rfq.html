@@ -23,6 +23,7 @@
 
 <form id="rfq-form" data-nosubmit>
 <div class="grid" style="grid-template-columns: 1fr 1fr; align-items:start">
+  <div class="stack">
   <div class="card">
     <div class="card-head"><h3 style="margin:0">{{ _("Project details") }}</h3><span class="grow"></span>
       <span class="muted small" id="save-state">{{ _("Changes are saved automatically") }}</span></div>
@@ -53,6 +54,36 @@
         {% endif %}
       {% endfor %}
     </div>
+  </div>
+
+  {# optional: a supplier list fills the names next to the packages (the upload form itself sits outside rfq-form) #}
+  {% set imp = s.rfq_draft.get('supplier_import') %}
+  <div class="card" id="sup-list-card">
+    <div class="card-head"><h3 style="margin:0">{{ _("Fill suppliers from a list") }}</h3>
+      <span class="tag">{{ _("optional") }}</span><span class="grow"></span>
+      <a class="small" href="{{ url_for('main.rfq_suppliers_example', run_id=p.run_id) }}">{{ _("Example file") }}</a></div>
+    <div class="card-body stack">
+      <p class="muted small" style="margin:0">{{ _("Upload the Excel list of suppliers and the packages or trades they work in. The names are added next to the matching packages below — you can still change them. Names you typed are never removed.") }}</p>
+      {% if can_edit %}
+      <div class="row">
+        <input type="file" name="suppliers" form="sup-form" accept=".xlsx,.xlsm,.xls,.csv" required class="grow">
+        <button class="btn primary" type="submit" form="sup-form">{{ _("Fill suppliers") }}</button>
+      </div>
+      {% endif %}
+      {% if imp %}
+      <div class="banner ok" style="margin:0; display:block">
+        <div class="row between">
+          <span>✓ {{ _("From") }} <b>{{ imp.file }}</b> · {{ imp.ts|ago }}:
+            {{ _("{n} name(s) added to {m} package(s).", n=imp.added.values()|map('length')|sum, m=imp.added|length) }}</span>
+          {% if can_edit and imp.added %}<button type="button" class="btn sm ghost" data-post="/api/p/{{ p.run_id }}/rfq/suppliers-undo"
+            data-confirm="{{ _('Remove the names this list added? Names you typed stay.') }}" data-then="reload">{{ _("Undo") }}</button>{% endif %}
+        </div>
+        <div class="muted small">{{ _("{n} supplier(s), {t} trade(s) in the file", n=imp.suppliers, t=imp.trades) }}{% if imp.by_ai %} · {{ _("{n} trade(s) matched by the AI — please check", n=imp.by_ai) }}{% endif %}</div>
+        {% if imp.unmatched %}<div class="small" style="margin-top:.3rem"><b>{{ _("Not matched to any package:") }}</b> {{ imp.unmatched[:12]|join(', ') }}{% if imp.unmatched|length > 12 %} …{% endif %}</div>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
   </div>
 
   <div class="card">
@@ -89,6 +120,7 @@
   </div>
 </div>
 </form>
+<form id="sup-form" data-ajax action="/api/p/{{ p.run_id }}/rfq/suppliers-file" enctype="multipart/form-data" hidden></form>
 
 <div class="row between" style="margin-top:1rem">
   <div id="need-confirm" class="banner warn hidden" style="margin:0">{{ _("Confirm the values found in the BOQ:") }} <b></b></div>

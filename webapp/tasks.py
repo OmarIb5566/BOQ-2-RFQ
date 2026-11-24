@@ -127,6 +127,44 @@ def export(ctx: JobContext) -> str:
     return f"{len(s.plan.work_packages)} work packages exported"
 
 
+@task("rfq-suppliers")
+def rfq_suppliers(ctx: JobContext) -> str:
+    """A supplier list (who does which trade) -> supplier names next to the matching work packages.
+    Only ADDS names; what was added is remembered so it can be undone."""
+    from boq_agent.rfq.suppliers import assign, match_trades, read_supplier_list
+    from .db import now
+
+    ctx.progress(0.1, "Reading the supplier list …")
+    try:
+        lst = read_supplier_list(Path(ctx.args["file"]))
+    except Exception as e:  # noqa: BLE001  (damaged / unreadable file)
+        raise ValueError(f"The supplier list cannot be read ({type(e).__name__}).") from e
+    if not lst.pairs:
+        raise ValueError("No supplier with a trade was found in the file. Use two columns: Supplier | Packages.")
+    with ctx.store.edit(ctx.run_id, ctx.user_id) as (agent, s):
+        llm = agent.llm if agent.settings.use_llm and agent.llm.status()[0] else None
+        ctx.progress(0.3, f"Matching {len(lst.trades)} trade(s) to the work packages …")
+        matches = match_trades(s, agent.rules, lst.trades, llm, agent.log)
+        per = assign(lst, matches)
+        sups = s.rfq_draft.setdefault("suppliers", {})
+        added: dict[str, list[str]] = {}
+        for key, names in per.items():
+            cur = sups.setdefault(key, [])
+            have = {x.casefold() for x in cur}
+            new = [n for n in names if n.casefold() not in have]
+            if new:
+                cur += new
+                added[key] = new
+        s.rfq_draft["supplier_import"] = {
+            "file": ctx.args.get("name", ""), "ts": now(), "layout": lst.layout,
+            "suppliers": len(lst.suppliers), "trades": len(lst.trades), "added": added,
+            "unmatched": [t for t in lst.trades if t not in matches][:50],
+            "by_ai": sum(1 for v in matches.values() if any(h == "AI" for _, h in v))}
+        agent.save(s)
+    n = sum(len(v) for v in added.values())
+    return f"{n} supplier name(s) added to {len(added)} package(s)"
+
+
 @task("rfq-detect")
 def rfq_detect(ctx: JobContext) -> str:
     from dataclasses import asdict

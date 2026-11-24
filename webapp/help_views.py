@@ -7,10 +7,13 @@ from .auth import login_required
 
 bp = Blueprint("help_views", __name__)
 
-APP_VERSION = "2.1"
+APP_VERSION = "2.2"
 
 # newest first; shown once to each user after an update (users.seen_version)
 WHATS_NEW = [
+    ("2.2", [
+        "RFQ letters: optionally upload your Excel list of suppliers and their trades — the supplier names are filled in next to the matching packages (Undo removes them again).",
+    ]),
     ("2.1", [
         "Simpler project page: one row of numbered steps (special cases → check packages → export → RFQ letters) with a short hint on each step.",
         "Special-case decisions are remembered for new projects; review them under Account menu › Remembered decisions.",

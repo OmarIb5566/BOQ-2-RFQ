@@ -1,4 +1,4 @@
-# PyInstaller spec for BOQ2RFQ.exe — build with packaging\build_exe.bat
+# PyInstaller spec for BOQ2RFQ.exe — build with: .venv\Scripts\python packaging\build_exe.py
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 ROOT = SPECPATH + "\\.."

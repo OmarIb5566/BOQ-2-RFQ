@@ -57,8 +57,16 @@ administrator. Nobody else can create an administrator. Then:
 
 ## 5. Single PC (no server)
 
-Double-click `run_app.bat` (this PC only) or `run_for_team.bat` (colleagues on the office network). Jobs run inside the
-same program; nothing else to install apart from Python and Ollama.
+In a terminal in the app folder (the first time: `python -m venv .venv` and
+`.venv\Scripts\python -m pip install -r requirements.txt`):
+
+```text
+.venv\Scripts\python server.py           :: this PC only  -> http://127.0.0.1:8080
+.venv\Scripts\python server.py --lan     :: colleagues on the office network too
+```
+
+Jobs run inside the same program; nothing else to install apart from Python and Ollama. A separate worker
+(with `BOQ_WORKER = "external"`) is started with `.venv\Scripts\python worker.py`.
 
 ## 6. Check after installing
 

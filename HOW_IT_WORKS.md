@@ -16,8 +16,8 @@ It runs fully locally. The reasoning model is **Gemma (`gemma4:e4b`) through Oll
 
 | How | Command |
 |---|---|
-| Web app, this PC | double-click `run_app.bat` (it creates `.venv` on the first run) → http://127.0.0.1:8080 |
-| Web app for the team | double-click `run_for_team.bat` (= `server.py --lan`); colleagues open `http://<this PC>:8080` |
+| Web app, this PC | `.venv\Scripts\python server.py` → http://127.0.0.1:8080 (first time: `python -m venv .venv` + `pip install -r requirements.txt`) |
+| Web app for the team | `.venv\Scripts\python server.py --lan`; colleagues open `http://<this PC>:8080` |
 | | `server.py --port 9000 --threads 16 --no-browser` |
 | Command line | `.venv\Scripts\python cli.py "BOQ.xlsx"` (asks Approve/Deny for each special case) |
 | | several BOQs of one project: `cli.py Structural.xlsx Architectural.pdf Landscape.xlsx`, or a zip: `cli.py "Project BOQs.zip"` |
@@ -620,7 +620,7 @@ The web app replaced the Streamlit screen, which redrew every widget of the page
 
 ### 11.1 Running it for a team
 
-- **`run_app.bat`** starts it on this PC (http://localhost:8080). **`run_for_team.bat`** also opens it to the office network. Windows asks once to allow Python through the firewall; allow it on private networks.
+- **`python server.py`** starts it on this PC (http://localhost:8080). **`python server.py --lan`** also opens it to the office network. Windows asks once to allow Python through the firewall; allow it on private networks.
 - **Server:** Waitress, a production server that runs on Windows, serves the pages with 16 threads, so many people can use it at the same time.
 - **Heavy work goes into one job queue:** analysis, export, re-reading documents, re-classifying a section, detecting RFQ details, writing RFQs and duplicating a project. The queue runs one job at a time, because the GPU (Ollama) and Microsoft Excel are single resources. Everybody keeps working meanwhile. The **Jobs** menu shows what runs and who is waiting; each project shows its own progress bar; a toast says when a job finishes.
 - **One project, one writer.** Every change to a project runs under that project's lock. Changes to a project with a running job are refused politely ("please wait — Export is running") instead of overwriting each other. Saves are atomic (write, then rename).
